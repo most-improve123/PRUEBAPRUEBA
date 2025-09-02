@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - WeSpark</title>
+    <link rel="stylesheet" href="prueba.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Scripts de Firebase (en este orden) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<!-- Tu script personalizado -->
+
+
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-card">
+            <div class="logo">
+                <i class="fas fa-graduation-cap"></i>
+                <span>WeSpark</span>
+            </div>
+            <h2>Welcome back</h2>
+            <p>Please enter your details to sign in</p>
+            <form id="login-form">
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Sign In</button>
+            </form>
+            <p class="login-footer">Don't have an account? <a href="register.html">Sign up</a></p>
+            <!-- En login.html, dentro del formulario de login -->
+<p class="login-footer">
+    Did you forget your password? <a href="#" id="forgot-password-link">Recover it here</a>
+    <br>
+    Do you prefer to log in without a password? <a href="#" id="magic-link-request">Send a magic link</a>
+</p>
+
+
+        </div>
+    </div>
+    <!-- Modal para enlace mágico -->
+<div id="magic-link-modal" class="modal hidden">
+    <div class="modal-content">
+        <span class="close-modal">&times;</span>
+        <h2>Iniciar sesión con enlace mágico</h2>
+        <p>Ingresa tu correo electrónico para recibir un enlace de inicio de sesión.</p>
+        <div class="form-group">
+            <label for="magic-link-email">Correo electrónico</label>
+            <input type="email" id="magic-link-email" required>
+        </div>
+        <button class="btn btn-primary" onclick="sendMagicLink()">Enviar enlace mágico</button>
+    </div>
+</div>
+
+    <!-- Modal para recuperación de contraseña -->
+<div id="forgot-password-modal" class="modal hidden">
+    <div class="modal-content">
+        <span class="close-modal">&times;</span>
+        <h2>Recover password</h2>
+        <p>Enter your email address to receive a recovery link.</p>
+        <div class="form-group">
+            <label for="recovery-email">Email</label>
+            <input type="email" id="recovery-email" required>
+        </div>
+        <button class="btn btn-primary" onclick="sendPasswordResetEmail()">Send recovery link</button>
+    </div>
+</div>
+
+    <div id="toast-container"></div>
+ 
+    <script src="login.js"></script>
+</body>
+</html>
+

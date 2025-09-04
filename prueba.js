@@ -170,37 +170,25 @@ async function generarPDFIndividual(nombre, curso, fecha, id, hashHex) {
 
 // Función para descargar certificado
 async function downloadCertificate(certificateId) {
-  showLoading();
-  try {
-    const certificate = certificatesCache.find(cert => cert.id == certificateId);
-    if (!certificate) throw new Error('Certificate not found');
-    const id = generateUniqueId();
-    const hashHex = await generateHash(id);
-    const userName = localStorage.getItem('userName') || certificate.nombre;
-    const pdfBlob = await generarPDFIndividual(userName, certificate.course.title, certificate.completionDate, id, hashHex);
+    showLoading();
+    try {
+        const certificate = certificatesCache.find(cert => cert.id == certificateId);
+        if (!certificate) throw new Error('Certificate not found');
 
-    // Guarda el certificado en Firestore
-    await saveCertificateToFirestore(id, userName, certificate.course.title, certificate.completionDate, hashHex);
+        const id = generateUniqueId();
+        const hashHex = await generateHash(id);
+        const userName = localStorage.getItem('userName') || certificate.nombre;
+        const courseTitle = certificate.course.title;
+        const completionDate = certificate.completionDate;
 
-    // Crea un enlace temporal para descargar el PDF
-    const pdfUrl = URL.createObjectURL(pdfBlob);
-    const a = document.createElement('a');
-    a.href = pdfUrl;
-    a.download = `certificate_${id}.pdf`; // Nombre del archivo
-    document.body.appendChild(a);
-    a.click(); // Simula un clic para iniciar la descarga
-    document.body.removeChild(a); // Limpia el DOM
-
-    // Libera el Blob URL
-    setTimeout(() => URL.revokeObjectURL(pdfUrl), 100);
-
-    showToast('success', 'Certificate Downloaded', 'Your certificate has been downloaded successfully.');
-  } catch (error) {
-    console.error('Download error:', error);
-    showToast('error', 'Download Failed', 'Failed to generate certificate. Please try again.');
-  } finally {
-    hideLoading();
-  }
+        // Redirigir a download.html con los parámetros
+        window.location.href = `download.html?certificateId=${id}&userName=${encodeURIComponent(userName)}&courseTitle=${encodeURIComponent(courseTitle)}&completionDate=${completionDate}&hashHex=${hashHex}`;
+    } catch (error) {
+        console.error('Download error:', error);
+        showToast('error', 'Download Failed', 'Failed to generate certificate. Please try again.');
+    } finally {
+        hideLoading();
+    }
 }
 // Función para agregar curso
 function addCourse() {

@@ -182,7 +182,7 @@ async function downloadCertificate(certificateId) {
         const completionDate = certificate.completionDate;
 
         // Redirigir a download.html con los parámetros
-        window.location.href = `download.html?certificateId=${id}&userName=${encodeURIComponent(userName)}&courseTitle=${encodeURIComponent(courseTitle)}&completionDate=${completionDate}&hashHex=${hashHex}`;
+        window.location.href = `https://most-improve123.github.io/Download/?certificateId=${id}&userName=${encodeURIComponent(userName)}&courseTitle=${encodeURIComponent(courseTitle)}&completionDate=${completionDate}&hashHex=${hashHex}`;
     } catch (error) {
         console.error('Download error:', error);
         showToast('error', 'Download Failed', 'Failed to generate certificate. Please try again.');

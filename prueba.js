@@ -177,11 +177,41 @@ async function downloadCertificate(certificateId) {
     const id = generateUniqueId();
     const hashHex = await generateHash(id);
     const userName = localStorage.getItem('userName') || certificate.nombre;
-    const pdfBlob = await generarPDFIndividual(userName, certificate.course.title, certificate.completionDate, id, hashHex);
-    await saveCertificateToFirestore(id, userName, certificate.course.title, certificate.completionDate, hashHex);
+
+    // Cambia la URL a la de tu servidor local o desplegado
+    const response = await fetch('http://localhost:3000/api/generateCertificate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        nombre: userName,
+        curso: certificate.course.title,
+        fecha: certificate.completionDate,
+        id: id,
+        hashHex: hashHex,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Error al generar el PDF');
+    }
+
+    // Obtener el PDF como un blob
+    const pdfBlob = await response.blob();
+
+    // Crear un enlace temporal para descargar el PDF
     const pdfUrl = URL.createObjectURL(pdfBlob);
-    window.open(pdfUrl, '_blank');
-    showToast('success', 'Certificate Ready', 'Your certificate is open in a new tab. Download it from there.');
+    const a = document.createElement('a');
+    a.href = pdfUrl;
+    a.download = `certificate_${id}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    // Liberar el objeto URL
+    URL.revokeObjectURL(pdfUrl);
+    showToast('success', 'Certificate Downloaded', 'Your certificate has been downloaded successfully.');
   } catch (error) {
     console.error('Download error:', error);
     showToast('error', 'Download Failed', 'Failed to generate certificate. Please try again.');

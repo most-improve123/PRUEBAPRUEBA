@@ -178,23 +178,10 @@ async function downloadCertificate(certificateId) {
     const hashHex = await generateHash(id);
     const userName = localStorage.getItem('userName') || certificate.nombre;
     const pdfBlob = await generarPDFIndividual(userName, certificate.course.title, certificate.completionDate, id, hashHex);
-
-    // Guarda el certificado en Firestore
     await saveCertificateToFirestore(id, userName, certificate.course.title, certificate.completionDate, hashHex);
-
-    // Crea un enlace temporal para descargar el PDF
     const pdfUrl = URL.createObjectURL(pdfBlob);
-    const a = document.createElement('a');
-    a.href = pdfUrl;
-    a.download = `certificate_${id}.pdf`; // Nombre del archivo
-    document.body.appendChild(a);
-    a.click(); // Simula un clic para iniciar la descarga
-    document.body.removeChild(a); // Limpia el DOM
-
-    // Libera el Blob URL
-    setTimeout(() => URL.revokeObjectURL(pdfUrl), 100);
-
-    showToast('success', 'Certificate Downloaded', 'Your certificate has been downloaded successfully.');
+    window.open(pdfUrl, '_blank');
+    showToast('success', 'Certificate Ready', 'Your certificate is open in a new tab. Download it from there.');
   } catch (error) {
     console.error('Download error:', error);
     showToast('error', 'Download Failed', 'Failed to generate certificate. Please try again.');
@@ -202,6 +189,7 @@ async function downloadCertificate(certificateId) {
     hideLoading();
   }
 }
+
 // Función para agregar curso
 function addCourse() {
   currentCourseId = null;

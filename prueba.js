@@ -186,7 +186,7 @@ async function downloadCertificate(certificateId) {
         window.open(pdfUrl, '_blank');
 
         showToast('success', 'Certificate Ready', 'Your certificate is open in a new tab. Please download it manually.');
-    } catch ( error ) {
+    } catch (error) {
         console.error('Download error:', error);
         showToast('error', 'Download Failed', 'Failed to generate certificate. Please try again.');
     } finally {

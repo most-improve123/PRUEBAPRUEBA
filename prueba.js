@@ -170,26 +170,40 @@ async function generarPDFIndividual(nombre, curso, fecha, id, hashHex) {
 
 // Función para descargar certificado
 async function downloadCertificate(certificateId) {
-  showLoading();
-  try {
-    const certificate = certificatesCache.find(cert => cert.id == certificateId);
-    if (!certificate) throw new Error('Certificate not found');
-    const id = generateUniqueId();
-    const hashHex = await generateHash(id);
-    const userName = localStorage.getItem('userName') || certificate.nombre;
-    const pdfBlob = await generarPDFIndividual(userName, certificate.course.title, certificate.completionDate, id, hashHex);
-    await saveCertificateToFirestore(id, userName, certificate.course.title, certificate.completionDate, hashHex);
-    const pdfUrl = URL.createObjectURL(pdfBlob);
-    window.open(pdfUrl, '_blank');
-    showToast('success', 'Certificate Ready', 'Your certificate is open in a new tab. Download it from there.');
-  } catch (error) {
-    console.error('Download error:', error);
-    showToast('error', 'Download Failed', 'Failed to generate certificate. Please try again.');
-  } finally {
-    hideLoading();
-  }
-}
+    showLoading();
+    try {
+        const certificate = certificatesCache.find(cert => cert.id == certificateId);
+        if (!certificate) throw new Error('Certificate not found');
 
+        const id = generateUniqueId();
+        const hashHex = await generateHash(id);
+        const userName = localStorage.getItem('userName') || certificate.nombre;
+
+        // Guardar en Firestore (opcional)
+        await saveCertificateToFirestore(id, userName, certificate.course.title, certificate.completionDate, hashHex);
+
+        // Construir la URL correctamente
+        const baseUrl = 'https://wespark-download.onrender.com/download.html';
+        const params = new URLSearchParams();
+        params.append('id', id);
+        params.append('nombre', userName);
+        params.append('curso', certificate.course.title);
+        params.append('fecha', certificate.completionDate);
+        params.append('hashHex', hashHex);
+
+        // La URL final sin espacios
+        const downloadUrl = `${baseUrl}?${params.toString()}`;
+
+        // Abrir en una nueva pestaña
+        window.open(downloadUrl, '_blank');
+
+    } catch (error) {
+        console.error('Download error:', error);
+        showToast('error', 'Download Failed', 'Failed to prepare certificate. Please try again.');
+    } finally {
+        hideLoading();
+    }
+}
 // Función para agregar curso
 function addCourse() {
   currentCourseId = null;

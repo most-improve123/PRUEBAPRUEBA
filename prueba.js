@@ -160,7 +160,7 @@ async function generarPDFIndividual(nombre, curso, fecha, id, hashHex) {
     doc.text(`ID: ${id}`, 4, 15);
     doc.text(`Hash: ${hashHex}`, 263, 585);
     doc.addImage(qrImage, 'PNG', 124, 460, 100, 100);
-    return doc;
+    return doc.output('blob');
   } catch (error) {
     console.error("Error al generar PDF:", error);
     alert(`⚠️ Error al generar el PDF para ${nombre}`);
@@ -174,26 +174,35 @@ async function downloadCertificate(certificateId) {
     try {
         const certificate = certificatesCache.find(cert => cert.id == certificateId);
         if (!certificate) throw new Error('Certificate not found');
+
         const id = generateUniqueId();
         const hashHex = await generateHash(id);
         const userName = localStorage.getItem('userName') || certificate.nombre;
-        const doc = await generarPDFIndividual(userName, certificate.course.title, certificate.completionDate, id, hashHex);
+
+        // Guardar en Firestore (opcional)
         await saveCertificateToFirestore(id, userName, certificate.course.title, certificate.completionDate, hashHex);
 
-        // Abrir el PDF en una nueva pestaña
-        const pdfBlob = doc.output('blob');
-        const pdfUrl = URL.createObjectURL(pdfBlob);
-        window.open(pdfUrl, '_blank');
+        // Construir la URL para download.html
+        const baseUrl = 'https://wespark-download.onrender.com/download.html';
+        const params = new URLSearchParams();
+        params.append('id', id);
+        params.append('nombre', userName);
+        params.append('curso', certificate.course.title);
+        params.append('fecha', certificate.completionDate);
+        params.append('hashHex', hashHex);
 
-        showToast('success', 'Certificate Ready', 'Your certificate is open in a new tab. Please download it manually.');
+        const downloadUrl = `${baseUrl}?${params.toString()}`;
+
+        // Abrir en una nueva pestaña (fuera del iframe de Wix)
+        window.open(downloadUrl, '_blank');
+
     } catch (error) {
         console.error('Download error:', error);
-        showToast('error', 'Download Failed', 'Failed to generate certificate. Please try again.');
+        showToast('error', 'Download Failed', 'Failed to prepare certificate. Please try again.');
     } finally {
         hideLoading();
     }
 }
-
 // Función para agregar curso
 function addCourse() {
   currentCourseId = null;

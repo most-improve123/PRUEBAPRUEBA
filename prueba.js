@@ -193,8 +193,8 @@ async function downloadCertificate(certificateId) {
 
         const downloadUrl = `${baseUrl}?${params.toString()}`;
 
-        // Abrir en una nueva pestaña (fuera del iframe de Wix)
-        window.open(downloadUrl, '_blank');
+        // Redirigir a download.html en la misma ventana
+        window.location.href = downloadUrl;
 
     } catch (error) {
         console.error('Download error:', error);
@@ -203,6 +203,7 @@ async function downloadCertificate(certificateId) {
         hideLoading();
     }
 }
+
 // Función para agregar curso
 function addCourse() {
   currentCourseId = null;

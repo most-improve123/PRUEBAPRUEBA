@@ -174,31 +174,19 @@ async function downloadCertificate(certificateId) {
     try {
         const certificate = certificatesCache.find(cert => cert.id == certificateId);
         if (!certificate) throw new Error('Certificate not found');
-
         const id = generateUniqueId();
         const hashHex = await generateHash(id);
         const userName = localStorage.getItem('userName') || certificate.nombre;
-
+        // Generar el PDF directamente
+        const doc = await generarPDFIndividual(userName, certificate.course.title, certificate.completionDate, id, hashHex);
         // Guardar en Firestore (opcional)
         await saveCertificateToFirestore(id, userName, certificate.course.title, certificate.completionDate, hashHex);
-
-        // Construir la URL para download.html
-        const baseUrl = 'https://wespark-download.onrender.com/download.html';
-        const params = new URLSearchParams();
-        params.append('id', id);
-        params.append('nombre', userName);
-        params.append('curso', certificate.course.title);
-        params.append('fecha', certificate.completionDate);
-        params.append('hashHex', hashHex);
-
-        const downloadUrl = `${baseUrl}?${params.toString()}`;
-
-        // Abrir en una nueva pestaña (fuera del iframe de Wix)
-        window.open(downloadUrl, '_blank');
-
+        // Descargar el PDF directamente
+        doc.save(`certificado_${id}.pdf`);
+        showToast('success', 'Certificate Ready', 'Your certificate has been downloaded successfully.');
     } catch (error) {
         console.error('Download error:', error);
-        showToast('error', 'Download Failed', 'Failed to prepare certificate. Please try again.');
+        showToast('error', 'Download Failed', 'Failed to generate certificate. Please try again.');
     } finally {
         hideLoading();
     }

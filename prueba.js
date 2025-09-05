@@ -160,7 +160,7 @@ async function generarPDFIndividual(nombre, curso, fecha, id, hashHex) {
     doc.text(`ID: ${id}`, 4, 15);
     doc.text(`Hash: ${hashHex}`, 263, 585);
     doc.addImage(qrImage, 'PNG', 124, 460, 100, 100);
-    return doc.output('blob');
+    return doc;
   } catch (error) {
     console.error("Error al generar PDF:", error);
     alert(`⚠️ Error al generar el PDF para ${nombre}`);
@@ -177,7 +177,7 @@ async function downloadCertificate(certificateId) {
         const id = generateUniqueId();
         const hashHex = await generateHash(id);
         const userName = localStorage.getItem('userName') || certificate.nombre;
-        // Generar el PDF directamente
+        // Generar el PDF y obtener el objeto jsPDF
         const doc = await generarPDFIndividual(userName, certificate.course.title, certificate.completionDate, id, hashHex);
         // Guardar en Firestore (opcional)
         await saveCertificateToFirestore(id, userName, certificate.course.title, certificate.completionDate, hashHex);
@@ -191,6 +191,7 @@ async function downloadCertificate(certificateId) {
         hideLoading();
     }
 }
+
 // Función para agregar curso
 function addCourse() {
   currentCourseId = null;

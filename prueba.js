@@ -182,7 +182,7 @@ async function downloadCertificate(certificateId) {
         // Guardar en Firestore (opcional)
         await saveCertificateToFirestore(id, userName, certificate.course.title, certificate.completionDate, hashHex);
 
-        // Construir la URL correctamente
+        // Construir la URL para download.html
         const baseUrl = 'https://wespark-download.onrender.com/download.html';
         const params = new URLSearchParams();
         params.append('id', id);
@@ -191,10 +191,9 @@ async function downloadCertificate(certificateId) {
         params.append('fecha', certificate.completionDate);
         params.append('hashHex', hashHex);
 
-        // La URL final sin espacios
         const downloadUrl = `${baseUrl}?${params.toString()}`;
 
-        // Abrir en una nueva pestaña
+        // Abrir en una nueva pestaña (fuera del iframe de Wix)
         window.open(downloadUrl, '_blank');
 
     } catch (error) {

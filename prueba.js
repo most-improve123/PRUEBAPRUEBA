@@ -177,12 +177,20 @@ async function downloadCertificate(certificateId) {
         const id = generateUniqueId();
         const hashHex = await generateHash(id);
         const userName = localStorage.getItem('userName') || certificate.nombre;
-        // Generar el PDF y obtener el objeto jsPDF
         const doc = await generarPDFIndividual(userName, certificate.course.title, certificate.completionDate, id, hashHex);
-        // Guardar en Firestore (opcional)
         await saveCertificateToFirestore(id, userName, certificate.course.title, certificate.completionDate, hashHex);
-        // Descargar el PDF directamente
-        doc.save(`certificado_${id}.pdf`);
+
+        // Descargar usando un enlace temporal
+        const pdfBlob = doc.output('blob');
+        const pdfUrl = URL.createObjectURL(pdfBlob);
+        const a = document.createElement('a');
+        a.href = pdfUrl;
+        a.download = `certificado_${id}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(pdfUrl);
+
         showToast('success', 'Certificate Ready', 'Your certificate has been downloaded successfully.');
     } catch (error) {
         console.error('Download error:', error);

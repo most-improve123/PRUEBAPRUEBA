@@ -262,27 +262,27 @@ function deleteCourse(courseId) {
 }
 
 // Función para mostrar formulario de usuario
+// Función para mostrar formulario de usuario (modificada para guardar en Firestore)
 function showUserForm(userId = null) {
   currentUserId = userId;
   const formTitle = document.getElementById('user-form-title');
   const formContainer = document.getElementById('user-form-container');
   const form = document.getElementById('user-form');
+
   if (!form || !formContainer) {
     console.error("El formulario de usuarios no se encontró en el DOM.");
     return;
   }
+
   form.reset();
+
   if (userId !== null) {
+    // Modo edición: cargar datos del usuario
     const user = usersCache.find(u => u.id === userId);
     if (user) {
-      const nameInput = form.querySelector('#user-name');
-      const emailInput = form.querySelector('#user-email');
-      const roleInput = form.querySelector('#user-role');
-      if (nameInput && emailInput && roleInput) {
-        nameInput.value = user.name || '';
-        emailInput.value = user.email || '';
-        roleInput.value = user.role || 'graduate';
-      }
+      document.getElementById('user-name').value = user.name || '';
+      document.getElementById('user-email').value = user.email || '';
+      document.getElementById('user-role').value = user.role || 'graduate';
       formTitle.textContent = 'Edit User';
     } else {
       console.error(`User with ID ${userId} not found.`);
@@ -292,43 +292,99 @@ function showUserForm(userId = null) {
   } else {
     formTitle.textContent = 'Add User';
   }
+
   formContainer.classList.remove('hidden');
-  form.onsubmit = function(e) {
+
+  form.onsubmit = async function(e) {
     e.preventDefault();
     const nameInput = form.querySelector('#user-name');
     const emailInput = form.querySelector('#user-email');
     const roleInput = form.querySelector('#user-role');
+
     if (!nameInput || !emailInput || !roleInput) {
       console.error("Uno o más elementos del formulario no se encontraron.");
       showToast('error', 'Form Error', 'Form elements not found.');
       return;
     }
-    const name = nameInput.value;
-    const email = emailInput.value;
+
+    const name = nameInput.value.trim();
+    const email = emailInput.value.trim();
     const role = roleInput.value;
+
     if (!name || !email) {
       showToast('error', 'Invalid Data', 'Name and email are required.');
       return;
     }
+
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       showToast('error', 'Invalid Email', 'Please enter a valid email address.');
       return;
     }
-    if (currentUserId !== null) {
-      usersCache = usersCache.map(user => {
-        if (user.id === currentUserId) {
-          return { id: currentUserId, name: name.trim(), email: email.trim(), role };
+
+    try {
+      showLoading();
+
+      if (currentUserId !== null) {
+        // Modo edición: actualizar usuario en Firestore
+        await dbUsers.collection('users').doc(currentUserId).update({
+          name: name,
+          email: email,
+          role: role,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        showToast('success', 'User Updated', 'The user has been updated successfully.');
+
+        // Actualizar usersCache
+        usersCache = usersCache.map(user => {
+          if (user.id === currentUserId) {
+            return { id: currentUserId, name, email, role };
+          }
+          return user;
+        });
+
+      } else {
+        // Modo creación: verificar si el email ya existe
+        const usersRef = dbUsers.collection('users');
+        const snapshot = await usersRef.where('email', '==', email).get();
+
+        if (!snapshot.empty) {
+          showToast('error', 'Email in Use', 'This email is already registered.');
+          return;
         }
-        return user;
-      });
-    } else {
-      const newId = usersCache.length > 0 ? Math.max(...usersCache.map(u => u.id)) + 1 : 1;
-      usersCache.push({ id: newId, name: name.trim(), email: email.trim(), role, createdAt: new Date().toISOString() });
+
+        // Crear usuario en Firestore (sin autenticación, solo datos)
+        const newUserRef = await dbUsers.collection('users').add({
+          name: name,
+          email: email,
+          role: role,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+
+        // Añadir a usersCache con el ID generado por Firestore
+        usersCache.push({
+          id: newUserRef.id,
+          name: name,
+          email: email,
+          role: role
+        });
+
+        showToast('success', 'User Created', 'The user has been created successfully.');
+      }
+
+      // Guardar en localStorage (opcional, para compatibilidad con tu código actual)
+      localStorage.setItem('usersCache', JSON.stringify(usersCache));
+
+      // Actualizar la tabla
+      displayUsersTable();
+      hideUserForm();
+
+    } catch (error) {
+      console.error("Error saving user:", error);
+      showToast('error', 'Error', 'Failed to save user. Check console for details.');
+    } finally {
+      hideLoading();
     }
-    localStorage.setItem('usersCache', JSON.stringify(usersCache));
-    displayUsersTable();
-    hideUserForm();
   };
 }
 

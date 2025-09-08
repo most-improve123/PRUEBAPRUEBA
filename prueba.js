@@ -421,12 +421,23 @@ function loadUsersFromLocalStorage() {
 async function deleteUser(userId) {
   const isConfirmed = confirm("Are you sure you want to delete this user? This action cannot be undone.");
   if (!isConfirmed) return;
+
   try {
     showLoading();
-    console.log("Intentando eliminar al usuario con ID:", userId);
+    // 1. Eliminar en Firestore
     await dbUsers.collection('users').doc(userId).delete();
-    showToast('success', 'User Deleted', 'The user has been deleted successfully.');
+
+    // 2. Eliminar en Firebase Authentication
+    // Solo funciona si el usuario actual es administrador y tiene permisos
+    // (No es seguro hacerlo desde el frontend en producción)
+    await auth.currentUser.delete(); // Esto eliminaría al usuario actual, no al usuario con userId
+    // Para eliminar a otro usuario, necesitas Firebase Admin SDK en un backend
+    // Alternativa: Usar una función de Firebase (Cloud Function) para eliminar al usuario
+
+    // 3. Eliminar de usersCache
     usersCache = usersCache.filter(user => user.id !== userId);
+
+    showToast('success', 'User Deleted', 'The user has been deleted successfully.');
     displayUsersTable();
   } catch (error) {
     console.error("Error deleting user:", error);

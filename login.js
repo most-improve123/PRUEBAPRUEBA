@@ -127,8 +127,21 @@ async function sendBrevoMagicLinkEmail(email, magicLink) {
 document.addEventListener('DOMContentLoaded', function() {
   // Modal de recuperación de contraseña
   const forgotPasswordLink = document.getElementById('forgot-password-link');
+  const forgotPasswordModal = document.getElementById('forgot-password-modal');
+  const closeForgotPasswordModal = forgotPasswordModal.querySelector('.close-modal');
   const modal = document.getElementById('forgot-password-modal');
   const closeModal = document.querySelector('.close-modal');
+  if (forgotPasswordLink && forgotPasswordModal && closeForgotPasswordModal) {
+    forgotPasswordLink.addEventListener('click', function(e) {
+      e.preventDefault();
+      forgotPasswordModal.classList.remove('hidden');
+    });
+
+    closeForgotPasswordModal.addEventListener('click', function() {
+      forgotPasswordModal.classList.add('hidden');
+    });
+  }
+
   if (forgotPasswordLink) {
     forgotPasswordLink.addEventListener('click', function(e) {
       e.preventDefault();

@@ -174,9 +174,13 @@ document.addEventListener('DOMContentLoaded', function() {
   const email = urlParams.get('email');
   console.log('Token en URL:', token);
   console.log('Email en URL:', email);
+  
   if (token && email) {
     const storedToken = localStorage.getItem('magicLinkToken');
     const storedEmail = localStorage.getItem('magicLinkEmail');
+    
+
+    
     console.log('Token almacenado:', storedToken);
     console.log('Email almacenado:', storedEmail);
     if (token === storedToken && email === storedEmail) {
@@ -276,26 +280,35 @@ document.getElementById('login-form').addEventListener('submit', async function(
   const email = document.getElementById('email').value;
   const password = document.getElementById('password').value;
   auth.setPersistence(firebase.auth.Auth.Persistence.SESSION)
-    .then(() => {
-      return auth.signInWithEmailAndPassword(email, password);
-    })
-    .then(async (userCredential) => {
-      const user = userCredential.user;
-      console.log("UID del usuario autenticado:", user.uid);
-      localStorage.setItem('userUID', user.uid);
-      const userDoc = await db.collection('users').doc(user.uid).get();
-      if (userDoc.exists) {
-        const userData = userDoc.data();
-        localStorage.setItem('userName', userData.name);
-        localStorage.setItem('userRole', userData.role);
-      }
-      showToast('success', 'Login successful!', 'Welcome back.');
+  .then(() => {
+    return auth.signInWithEmailAndPassword(email, password);
+  })
+  .then(async (userCredential) => {
+    const user = userCredential.user;
+    // Verificar si el usuario existe en Firestore
+    const userDoc = await db.collection('users').doc(user.uid).get();
+    if (!userDoc.exists) {
+      // Usuario eliminado: redirigir a error.html
+      showToast('error', 'User Not Found', 'This account no longer exists.');
       setTimeout(() => {
-        window.location.href = 'prueba.html';
+        window.location.href = 'error.html';
       }, 2000);
-    })
-    .catch((error) => {
-      console.error("Error signing in: ", error);
-      showToast('error', 'Login error', error.message);
-    });
+      return;
+    }
+    // Guardar datos en localStorage
+    const userData = userDoc.data();
+    localStorage.setItem('userName', userData.name);
+    localStorage.setItem('userRole', userData.role);
+    localStorage.setItem('userUID', user.uid);
+
+    showToast('success', 'Login successful!', 'Welcome back.');
+    setTimeout(() => {
+      window.location.href = 'prueba.html';
+    }, 2000);
+  })
+  .catch((error) => {
+    console.error("Error signing in: ", error);
+    showToast('error', 'Login error', error.message);
+  });
+
 });

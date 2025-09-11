@@ -183,7 +183,7 @@ async function downloadCertificate(certificateId) {
         await saveCertificateToFirestore(id, userName, certificate.course.title, certificate.completionDate, hashHex);
 
         // Construir la URL para download.html
-        const baseUrl = 'https://most-improve123.github.io/Download/download.html';
+        const baseUrl = 'https://wespark-download.onrender.com/download.html';
         const params = new URLSearchParams();
         params.append('id', id);
         params.append('nombre', userName);

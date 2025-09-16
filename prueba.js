@@ -779,6 +779,7 @@ function showConfirmationToast(userId) {
 }
 
 // Función para inicializar la aplicación
+// En prueba.js, dentro de initializeApp()
 function initializeApp() {
   auth.onAuthStateChanged(user => {
     if (user) {
@@ -788,19 +789,23 @@ function initializeApp() {
       console.log("No hay usuario autenticado.");
     }
   });
+
   setupNavigation();
   setupTabs();
   setupFileUpload();
-  showView('admin');
-  showTab('users');
+
   const urlParams = new URLSearchParams(window.location.search);
   const uidFromUrl = urlParams.get('uid');
+  const viewParam = urlParams.get('view');
+
   if (uidFromUrl) {
     localStorage.setItem('userUID', uidFromUrl);
     console.log("UID del usuario desde la URL:", uidFromUrl);
   }
+
   const userUID = localStorage.getItem('userUID');
   console.log("UID del usuario en localStorage (prueba.js):", userUID);
+
   if (!userUID) {
     console.error("No se encontró el UID del usuario en localStorage.");
     showToast('error', 'Error', 'No se encontró el UID del usuario. Por favor, inicia sesión de nuevo.');
@@ -809,33 +814,60 @@ function initializeApp() {
     }, 2000);
     return;
   }
+
   const certificateId = urlParams.get('certificateId');
   if (certificateId) {
     showView('verifier');
     document.getElementById('certificate-id').value = certificateId;
     setTimeout(() => verifyCertificate(), 100);
   }
+
+  // Cargar el nombre del usuario en el header
   const userName = localStorage.getItem('userName');
-  const userRole = localStorage.getItem('user-name');
-  if (userName) {
-    document.querySelector('.user-info span').textContent = userName;
-  }
-   if (userName && userInfoSpan) {
-    userInfoSpan.textContent = userName; // Muestra el nombre guardado
+  const userRole = localStorage.getItem('userRole');
+  const userInfoSpan = document.querySelector('.user-info span');
+
+  if (userName && userInfoSpan) {
+    userInfoSpan.textContent = userName;
   } else if (userInfoSpan) {
-    userInfoSpan.textContent = 'User'; // Fallback si no hay nombre
+    userInfoSpan.textContent = 'User';
   }
+
+  // Ocultar/mostrar pestañas según el rol del usuario
+  const adminBtns = document.querySelectorAll('.nav-btn[data-view="admin"], .mobile-nav-btn[data-view="admin"]');
+  const graduateBtns = document.querySelectorAll('.nav-btn[data-view="graduate"], .mobile-nav-btn[data-view="graduate"]');
+  const verifierBtns = document.querySelectorAll('.nav-btn[data-view="verifier"], .mobile-nav-btn[data-view="verifier"]');
+
   if (userRole === 'admin') {
-    document.querySelectorAll('.nav-btn[data-view="graduate"], .nav-btn[data-view="verifier"], .mobile-nav-btn[data-view="graduate"], .mobile-nav-btn[data-view="verifier"]').forEach(btn => {
-      btn.style.display = 'none';
-    });
-    showView('admin');
+    // Para admin: ocultar pestañas de graduate y verifier
+    graduateBtns.forEach(btn => btn.style.display = 'none');
+    verifierBtns.forEach(btn => btn.style.display = 'none');
+    // Mostrar vista de admin por defecto
+    if (viewParam) {
+      showView(viewParam);
+    } else {
+      showView('admin');
+    }
   } else if (userRole === 'graduate') {
-    document.querySelectorAll('.nav-btn[data-view="admin"], .mobile-nav-btn[data-view="admin"]').forEach(btn => {
-      btn.style.display = 'none';
-    });
-    showView('graduate');
+    // Para graduate: ocultar pestaña de admin
+    adminBtns.forEach(btn => btn.style.display = 'none');
+    // Mostrar vista de graduate por defecto
+    if (viewParam) {
+      showView(viewParam);
+    } else {
+      showView('graduate');
+    }
+  } else {
+    // Rol no reconocido: mostrar solo graduate por defecto
+    adminBtns.forEach(btn => btn.style.display = 'none');
+    if (viewParam) {
+      showView(viewParam);
+    } else {
+      showView('graduate');
+    }
   }
+
+  loadInitialData();
 }
 
 // Función para configurar navegación
@@ -844,19 +876,28 @@ function setupNavigation() {
 }
 
 // Función para mostrar vista
+// Función para mostrar la vista correspondiente (admin, graduate, verifier)
 function showView(viewName) {
-  currentView = viewName;
+  // Ocultar todas las vistas
   document.querySelectorAll('.view').forEach(view => {
     view.classList.remove('active');
   });
+
+  // Mostrar la vista seleccionada
   const targetView = document.getElementById(`${viewName}-view`);
   if (targetView) {
     targetView.classList.add('active');
   }
+
+  // Actualizar los botones de navegación
   document.querySelectorAll('.nav-btn, .mobile-nav-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.view === viewName);
   });
+
+  // Cargar datos según la vista
   loadViewData(viewName);
+
+  // Scroll al inicio de la página
   window.scrollTo(0, 0);
 }
 
@@ -1387,16 +1428,12 @@ document.addEventListener('DOMContentLoaded', async function() {
   const adminBtns = document.querySelectorAll('.nav-btn[data-view="admin"], .mobile-nav-btn[data-view="admin"]');
   const graduateBtns = document.querySelectorAll('.nav-btn[data-view="graduate"], .mobile-nav-btn[data-view="graduate"]');
   const verifierBtns = document.querySelectorAll('.nav-btn[data-view="verifier"], .mobile-nav-btn[data-view="verifier"]');
-  if (userRole === 'admin') {
-    adminBtns.forEach(btn => btn.style.display = 'block');
-    graduateBtns.forEach(btn => btn.style.display = 'none');
-    verifierBtns.forEach(btn => btn.style.display = 'none');
-    showView('admin');
-  } else if (userRole === 'graduate') {
-    adminBtns.forEach(btn => btn.style.display = 'none');
-    graduateBtns.forEach(btn => btn.style.display = 'block');
-    verifierBtns.forEach(btn => btn.style.display = 'block');
-    showView('graduate');
+  if (viewParam) {
+    showView(viewParam); // Mostrar la vista especificada en la URL (admin o graduate)
+  } else if (userRole === 'admin') {
+    showView('admin'); // Mostrar panel de admin si el rol es admin
+  } else {
+    showView('graduate'); // Mostrar panel de graduate por defecto
   }
 
   loadInitialData();

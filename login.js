@@ -205,33 +205,35 @@ document.addEventListener('DOMContentLoaded', function() {
     const storedEmail = localStorage.getItem('magicLinkEmail');
 
     // Dentro de la verificación del token del magic link
+// Dentro de la verificación del token del magic link (en login.js)
 if (token === storedToken && email === storedEmail) {
   db.collection('users').where('email', '==', email).limit(1).get()
     .then(querySnapshot => {
       if (!querySnapshot.empty) {
         const userData = querySnapshot.docs[0].data();
-        localStorage.setItem('userName', userData.name || email.split('@')[0]); // Prioriza el nombre de Firestore
-        localStorage.setItem('userRole', userData.role || 'graduate');
-      } else {
-        localStorage.setItem('userName', email.split('@')[0]); // Fallback si no existe el usuario
-        localStorage.setItem('userRole', 'graduate');
-      }
-      const simulatedUID = 'brevo-' + email.split('@')[0] + '-' + Date.now();
-      localStorage.setItem('userUID', simulatedUID);
-      showToast('success', 'Successful login', 'Welcome!');
-      setTimeout(() => window.location.href = 'prueba.html', 2000);
-    })
+        localStorage.setItem('userName', userData.name || email.split('@')[0]);
+        localStorage.setItem('userRole', userData.role || 'graduate'); // Guardar el rol
 
+        // Redirigir según el rol
+        if (userData.role === 'admin') {
+          window.location.href = 'prueba.html?view=admin'; // Redirigir al panel de admin
+        } else {
+          window.location.href = 'prueba.html?view=graduate'; // Redirigir al panel de graduate
+        }
+      } else {
+        localStorage.setItem('userName', email.split('@')[0]);
+        localStorage.setItem('userRole', 'graduate'); // Rol por defecto
+        window.location.href = 'prueba.html?view=graduate'; // Redirigir al panel de graduate
+      }
+    })
     .catch(error => {
-          console.error("Error getting user role:", error);
-          localStorage.setItem('userName', email.split('@')[0]);
-          localStorage.setItem('userRole', 'graduate');
-          const simulatedUID = 'brevo-' + email.split('@')[0] + '-' + Date.now();
-          localStorage.setItem('userUID', simulatedUID);
-          showToast('success', 'Successful login', 'Welcome!');
-          setTimeout(() => window.location.href = 'prueba.html', 2000);
-        });
-    } else {
+      console.error("Error al obtener el rol del usuario:", error);
+      localStorage.setItem('userName', email.split('@')[0]);
+      localStorage.setItem('userRole', 'graduate'); // Rol por defecto
+      window.location.href = 'prueba.html?view=graduate'; // Redirigir al panel de graduate
+    });
+}
+   else {
       showToast('error', 'Invalid link', 'The magic link is not valid or has expired.');
     }
   }
@@ -266,14 +268,20 @@ if (token === storedToken && email === storedEmail) {
       setTimeout(() => window.location.href = 'error.html', 2000);
       return;
     }
+// Dentro del manejo del formulario de login tradicional (en login.js)
+const userData = userDoc.data();
+localStorage.setItem('userName', userData.name || email.split('@')[0]);
+localStorage.setItem('userRole', userData.role); // Guardar el rol
+localStorage.setItem('userUID', user.uid);
 
-    const userData = userDoc.data();
-    localStorage.setItem('userName', userData.name || email.split('@')[0]);
-    localStorage.setItem('userRole', userData.role);
-    localStorage.setItem('userUID', user.uid);
-
-    showToast('success', 'Login successful!', 'Welcome back.');
-    setTimeout(() => window.location.href = 'prueba.html', 2000);
+// Redirigir según el rol
+if (userData.role === 'admin') {
+  showToast('success', 'Login successful!', 'Welcome back.');
+  setTimeout(() => window.location.href = 'prueba.html?view=admin', 2000); // Panel de admin
+} else {
+  showToast('success', 'Login successful!', 'Welcome back.');
+  setTimeout(() => window.location.href = 'prueba.html?view=graduate', 2000); // Panel de graduate
+}
   } catch (error) {
     console.error("Login error:", error);
     showToast('error', 'Login error', error.message);

@@ -816,9 +816,14 @@ function initializeApp() {
     setTimeout(() => verifyCertificate(), 100);
   }
   const userName = localStorage.getItem('userName');
-  const userRole = localStorage.getItem('userRole');
+  const userRole = localStorage.getItem('user-name');
   if (userName) {
     document.querySelector('.user-info span').textContent = userName;
+  }
+   if (userName && userInfoSpan) {
+    userInfoSpan.textContent = userName; // Muestra el nombre guardado
+  } else if (userInfoSpan) {
+    userInfoSpan.textContent = 'User'; // Fallback si no hay nombre
   }
   if (userRole === 'admin') {
     document.querySelectorAll('.nav-btn[data-view="graduate"], .nav-btn[data-view="verifier"], .mobile-nav-btn[data-view="graduate"], .mobile-nav-btn[data-view="verifier"]').forEach(btn => {

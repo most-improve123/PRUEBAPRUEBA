@@ -2,22 +2,22 @@
 <html lang="en">
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - WeSpark</title>
     <link rel="stylesheet" href="prueba.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <!-- Scripts de Firebase (en este orden) -->
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
-<!-- Tu script personalizado -->
-
-
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 </head>
 <body>
+    <!-- Loading Spinner -->
+    <div id="loading" class="loading hidden">
+        <div class="spinner"></div>
+    </div>
+
     <div class="login-container">
         <div class="login-card">
             <div class="logo">
@@ -25,59 +25,78 @@
                 <span>WeSpark</span>
             </div>
             <h2>Welcome back</h2>
-            <p>Please enter your details to sign in</p>
+            <p>Sign in with your email. No password needed!</p>
+
+            <!-- Botón principal para magic link -->
+            <button class="btn btn-primary" id="magic-link-request-main">
+                <i class="fas fa-magic"></i> Sign in with Magic Link
+            </button>
+
+            <!-- Opción para login tradicional (modal) -->
+            <p class="login-footer">
+                Prefer to sign in with password? <a href="#" id="show-traditional-login">Click here</a>
+            </p>
+
+            <!-- Enlaces existentes -->
+            
+            <p class="login-footer">
+                Don't have an account? <a href="register.html">Sign up</a>
+            </p>
+        </div>
+    </div>
+
+    <!-- Modal para magic link -->
+    <div id="magic-link-modal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close-modal" id="close-magic-link-modal">&times;</span>
+            <h2>Log in with magic link</h2>
+            <p>Enter your email address to receive a login link.</p>
+            <div class="form-group">
+                <label for="magic-link-email">Email</label>
+                <input type="email" id="magic-link-email" required>
+            </div>
+            <button class="btn btn-primary" onclick="sendMagicLink()">Send magic link</button>
+        </div>
+    </div>
+
+    <!-- Modal para login tradicional -->
+    <div id="traditional-login-modal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close-modal" id="close-traditional-login-modal">&times;</span>
+            <h2>Sign in with password</h2>
             <form id="login-form">
                 <div class="form-group">
-                    <label for="email">Email</label>
-                    <input type="email" id="email" required>
+                    <label for="traditional-email">Email</label>
+                    <input type="email" id="traditional-email" required>
                 </div>
                 <div class="form-group">
-                    <label for="password">Password</label>
-                    <input type="password" id="password" required>
+                    <label for="traditional-password">Password</label>
+                    <input type="password" id="traditional-password" required>
                 </div>
                 <button type="submit" class="btn btn-primary">Sign In</button>
             </form>
-            <p class="login-footer">Don't have an account? <a href="register.html">Sign up</a></p>
-            <!-- En login.html, dentro del formulario de login -->
-<p class="login-footer">
-    Did you forget your password? <a href="#" id="forgot-password-link">Recover it here</a>
-    <br>
-    Do you prefer to log in without a password? <a href="#" id="magic-link-request">Send a magic link</a>
-</p>
-
-
+            <p class="login-footer">
+                Did you forget your password? <a href="#" id="forgot-password-link">Recover it here</a>
+            </p>
         </div>
     </div>
-    <!-- Modal para enlace mágico -->
-<div id="magic-link-modal" class="modal hidden">
-    <div class="modal-content">
-        <span class="close-modal">&times;</span>
-        <h2>Log in with magic link</h2>
-        <p>Enter your email address to receive a login link.</p>
-        <div class="form-group">
-            <label for="magic-link-email">Email</label>
-            <input type="email" id="magic-link-email" required>
-        </div>
-        <button class="btn btn-primary" onclick="sendMagicLink()">Send magic link</button>
-    </div>
-</div>
 
     <!-- Modal para recuperación de contraseña -->
-<div id="forgot-password-modal" class="modal hidden">
-    <div class="modal-content">
-        <span class="close-modal">&times;</span>
-        <h2>Recover password</h2>
-        <p>Enter your email address to receive a recovery link.</p>
-        <div class="form-group">
-            <label for="recovery-email">Email</label>
-            <input type="email" id="recovery-email" required>
+    <div id="forgot-password-modal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close-modal" id="close-forgot-password-modal">&times;</span>
+            <h2>Recover password</h2>
+            <p>Enter your email address to receive a recovery link.</p>
+            <div class="form-group">
+                <label for="recovery-email">Email</label>
+                <input type="email" id="recovery-email" required>
+            </div>
+            <button class="btn btn-primary" onclick="sendPasswordResetEmail()">Send recovery link</button>
         </div>
-        <button class="btn btn-primary" onclick="sendPasswordResetEmail()">Send recovery link</button>
     </div>
-</div>
 
     <div id="toast-container"></div>
- 
+
     <script src="login.js"></script>
 </body>
 </html>

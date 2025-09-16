@@ -199,23 +199,25 @@ document.addEventListener('DOMContentLoaded', function() {
     const storedToken = localStorage.getItem('magicLinkToken');
     const storedEmail = localStorage.getItem('magicLinkEmail');
 
-    if (token === storedToken && email === storedEmail) {
-      db.collection('users').where('email', '==', email).limit(1).get()
-        .then(querySnapshot => {
-          if (!querySnapshot.empty) {
-            const userData = querySnapshot.docs[0].data();
-            localStorage.setItem('userName', userData.name || email.split('@')[0]);
-            localStorage.setItem('userRole', userData.role || 'graduate');
-          } else {
-            localStorage.setItem('userName', email.split('@')[0]);
-            localStorage.setItem('userRole', 'graduate');
-          }
-          const simulatedUID = 'brevo-' + email.split('@')[0] + '-' + Date.now();
-          localStorage.setItem('userUID', simulatedUID);
-          showToast('success', 'Successful login', 'Welcome!');
-          setTimeout(() => window.location.href = 'prueba.html', 2000);
-        })
-        .catch(error => {
+    // Dentro de la verificación del token del magic link
+if (token === storedToken && email === storedEmail) {
+  db.collection('users').where('email', '==', email).limit(1).get()
+    .then(querySnapshot => {
+      if (!querySnapshot.empty) {
+        const userData = querySnapshot.docs[0].data();
+        localStorage.setItem('userName', userData.name || email.split('@')[0]); // Prioriza el nombre de Firestore
+        localStorage.setItem('userRole', userData.role || 'graduate');
+      } else {
+        localStorage.setItem('userName', email.split('@')[0]); // Fallback si no existe el usuario
+        localStorage.setItem('userRole', 'graduate');
+      }
+      const simulatedUID = 'brevo-' + email.split('@')[0] + '-' + Date.now();
+      localStorage.setItem('userUID', simulatedUID);
+      showToast('success', 'Successful login', 'Welcome!');
+      setTimeout(() => window.location.href = 'prueba.html', 2000);
+    })
+
+    .catch(error => {
           console.error("Error getting user role:", error);
           localStorage.setItem('userName', email.split('@')[0]);
           localStorage.setItem('userRole', 'graduate');
@@ -241,17 +243,18 @@ document.addEventListener('DOMContentLoaded', function() {
       const userCredential = await auth.signInWithEmailAndPassword(email, password);
       const user = userCredential.user;
 
-      const userDoc = await db.collection('users').doc(user.uid).get();
-      if (!userDoc.exists) {
-        showToast('error', 'User Not Found', 'This account no longer exists.');
-        setTimeout(() => window.location.href = 'error.html', 2000);
-        return;
-      }
+      // Dentro del manejo del formulario de login tradicional
+const userDoc = await db.collection('users').doc(user.uid).get();
+if (!userDoc.exists) {
+  showToast('error', 'User Not Found', 'This account no longer exists.');
+  setTimeout(() => window.location.href = 'error.html', 2000);
+  return;
+}
 
-      const userData = userDoc.data();
-      localStorage.setItem('userName', userData.name);
-      localStorage.setItem('userRole', userData.role);
-      localStorage.setItem('userUID', user.uid);
+const userData = userDoc.data();
+localStorage.setItem('userName', userData.name || user.email.split('@')[0]); // Prioriza el nombre de Firestore
+localStorage.setItem('userRole', userData.role);
+localStorage.setItem('userUID', user.uid);
 
       showToast('success', 'Login successful!', 'Welcome back.');
       setTimeout(() => window.location.href = 'prueba.html', 2000);

@@ -56,16 +56,21 @@ async function sendMagicLink() {
 
   const sendButton = document.querySelector('#magic-link-modal .btn-primary');
   sendButton.disabled = true;
-  sendButton.textContent = 'Sending...';
+  sendButton.textContent = 'Checking...';
 
   try {
     showLoading();
-    const emailExists = await checkIfEmailExists(email);
-    if (!emailExists) {
+    // Verificar si el correo existe en Firestore
+    const usersRef = db.collection('users');
+    const query = usersRef.where('email', '==', email).limit(1);
+    const snapshot = await query.get();
+
+    if (snapshot.empty) {
       showToast('error', 'Unregistered email', 'This email is not registered. Please sign up first.');
-      return;
+      return; // Detener si el correo no está registrado
     }
 
+    sendButton.textContent = 'Sending...';
     const token = generateRandomToken();
     localStorage.setItem('magicLinkToken', token);
     localStorage.setItem('magicLinkEmail', email);
@@ -233,36 +238,48 @@ if (token === storedToken && email === storedEmail) {
 
   // Manejo del formulario de login tradicional
   document.getElementById('login-form').addEventListener('submit', async function(e) {
-    e.preventDefault();
-    const email = document.getElementById('traditional-email').value;
-    const password = document.getElementById('traditional-password').value;
+  e.preventDefault();
+  const email = document.getElementById('traditional-email').value;
+  const password = document.getElementById('traditional-password').value;
 
-    showLoading();
-    try {
-      await auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
-      const userCredential = await auth.signInWithEmailAndPassword(email, password);
-      const user = userCredential.user;
+  showLoading();
+  try {
+    // Verificar si el usuario existe en Firestore (opcional, pero recomendado)
+    const usersRef = db.collection('users');
+    const query = usersRef.where('email', '==', email).limit(1);
+    const snapshot = await query.get();
 
-      // Dentro del manejo del formulario de login tradicional
-const userDoc = await db.collection('users').doc(user.uid).get();
-if (!userDoc.exists) {
-  showToast('error', 'User Not Found', 'This account no longer exists.');
-  setTimeout(() => window.location.href = 'error.html', 2000);
-  return;
-}
-
-const userData = userDoc.data();
-localStorage.setItem('userName', userData.name || user.email.split('@')[0]); // Prioriza el nombre de Firestore
-localStorage.setItem('userRole', userData.role);
-localStorage.setItem('userUID', user.uid);
-
-      showToast('success', 'Login successful!', 'Welcome back.');
-      setTimeout(() => window.location.href = 'prueba.html', 2000);
-    } catch (error) {
-      console.error("Login error:", error);
-      showToast('error', 'Login error', error.message);
-    } finally {
-      hideLoading();
+    if (snapshot.empty) {
+      showToast('error', 'User Not Found', 'This email is not registered.');
+      return; // Detener si el correo no está registrado
     }
-  });
+
+    // Proceder con el login en Firebase Auth
+    await auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
+    const userCredential = await auth.signInWithEmailAndPassword(email, password);
+    const user = userCredential.user;
+
+    // Verificar que el usuario exista en Firestore (por si acaso)
+    const userDoc = await db.collection('users').doc(user.uid).get();
+    if (!userDoc.exists) {
+      showToast('error', 'User Not Found', 'This account no longer exists.');
+      setTimeout(() => window.location.href = 'error.html', 2000);
+      return;
+    }
+
+    const userData = userDoc.data();
+    localStorage.setItem('userName', userData.name || email.split('@')[0]);
+    localStorage.setItem('userRole', userData.role);
+    localStorage.setItem('userUID', user.uid);
+
+    showToast('success', 'Login successful!', 'Welcome back.');
+    setTimeout(() => window.location.href = 'prueba.html', 2000);
+  } catch (error) {
+    console.error("Login error:", error);
+    showToast('error', 'Login error', error.message);
+  } finally {
+    hideLoading();
+  }
+});
+
 });

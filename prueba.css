@@ -165,6 +165,43 @@ body {
 #course-users option {
     padding: 0.25rem 0.5rem;
 }
+.download-container {
+  text-align: center;
+  padding: 2rem;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.btn-download {
+  background-color: #4CAF50;
+  color: white;
+  padding: 12px 24px;
+  border: none;
+  border-radius: 4px;
+  font-size: 16px;
+  cursor: pointer;
+  margin-top: 1rem;
+}
+
+.btn-download:hover {
+  background-color: #45a049;
+}
+
+.spinner {
+  border: 4px solid rgba(0, 0, 0, 0.1);
+  border-radius: 50%;
+  border-top: 4px solid #4CAF50;
+  width: 30px;
+  height: 30px;
+  animation: spin 1s linear infinite;
+  margin: 1rem auto;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
 
 /* Estilo para el grupo de checkboxes */
 .checkbox-group {

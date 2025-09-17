@@ -9,6 +9,13 @@ let currentCourseId = null;
 let currentImageFile = null;
 let currentUserId = null;
 
+// Añade esto al inicio de tu archivo o dentro de la función donde se usa viewParam
+const urlParams = new URLSearchParams(window.location.search);
+const viewParam = urlParams.get('view'); // Obtiene el parámetro 'view' de la URL
+// Función para generar un token aleatorio (para magic links)
+function generateRandomToken() {
+  return 'token-' + Math.random().toString(36).substr(2, 9);
+}
 
 // Función para cerrar sesión
 function logout() {
@@ -595,20 +602,35 @@ function deleteCourse(courseId) {
 function loadUsersIntoCourseForm() {
   const container = document.getElementById('course-users-checkboxes');
   container.innerHTML = '';
+
   usersCache.forEach(user => {
     const checkboxItem = document.createElement('div');
     checkboxItem.className = 'checkbox-item';
+
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.id = `user-${user.id}`;
     checkbox.value = user.id;
+
     const label = document.createElement('label');
     label.htmlFor = `user-${user.id}`;
-    label.textContent = `${user.name} (${user.email})`;
+    label.innerHTML = `
+      ${user.name} (${user.email})
+      <br>
+      <small style="color: var(--neutral-600);">
+        Cursos: ${user.courses?.map(cid => {
+          const course = coursesCache.find(c => c.id === cid);
+          return course ? course.title : 'Unknown';
+        }).join(', ') || 'None'}
+      </small>
+    `;
+
     checkboxItem.appendChild(checkbox);
     checkboxItem.appendChild(label);
     container.appendChild(checkboxItem);
   });
+
+  // Marcar usuarios ya seleccionados (si es edición)
   if (currentCourseId) {
     const course = coursesCache.find(c => c.id === currentCourseId);
     if (course?.users) {
@@ -1167,6 +1189,17 @@ function loadTabData(tabName) {
   }
 }
 
+// Función para obtener la URL base de la aplicación
+function getBaseUrl() {
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    return `http://${window.location.hostname}:${window.location.port}`;
+  } else if (window.location.hostname.includes('github.io')) {
+    return 'https://most-improve123.github.io/LIMPPL';
+  } else {
+    return `https://${window.location.hostname}`;
+  }
+}
+
 // Función para configurar carga de archivos
 function setupFileUpload() {
   const uploadArea = document.getElementById('file-upload-area');
@@ -1220,6 +1253,29 @@ function clearFile() {
   importBtn.disabled = true;
 }
 
+
+
+function validateCsvStructure(data, type) {
+  if (type === 'students') {
+    const requiredFields = ['nombre', 'email', 'curso'];
+    for (const row of data) {
+      const missingFields = requiredFields.filter(field => !row[field]);
+      if (missingFields.length > 0) {
+        return { valid: false, message: `Faltan campos en la fila: ${JSON.stringify(row)}. Campos requeridos: ${missingFields.join(', ')}` };
+      }
+    }
+  } else if (type === 'certificates') {
+    const requiredFields = ['nombre', 'email', 'curso'];
+    for (const row of data) {
+      const missingFields = requiredFields.filter(field => !row[field]);
+      if (missingFields.length > 0) {
+        return { valid: false, message: `Faltan campos en la fila: ${JSON.stringify(row)}. Campos requeridos: ${missingFields.join(', ')}` };
+      }
+    }
+  }
+  return { valid: true };
+}
+
 // Función para importar CSV
 async function importCsv() {
   const fileInput = document.getElementById('csv-file');
@@ -1228,6 +1284,33 @@ async function importCsv() {
     showToast('error', 'No File Selected', 'Please select a CSV file to import.');
     return;
   }
+
+  // Función para enviar el magic link por correo electrónico
+async function sendBrevoMagicLinkEmail(email, magicLink) {
+  try {
+    const response = await fetch('https://wespark-backend.onrender.com/send-magic-link', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email, magicLink }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error(`Error al enviar email a ${email}:`, errorData.error || 'Unknown error');
+      return { success: false };
+    }
+    return await response.json();
+  } catch (error) {
+    console.error(`Error de red al enviar email a ${email}:`, error);
+    return { success: false };
+  }
+}
+
+  // Verificar qué tipo de importación se seleccionó
+  const importType = document.querySelector('input[name="import-type"]:checked').value;
+
   showLoading();
   try {
     const results = await new Promise((resolve, reject) => {
@@ -1237,37 +1320,187 @@ async function importCsv() {
         error: reject
       });
     });
+
     const data = results.data;
-    const zip = new JSZip();
-    const defaultDate = '2025-07-01';
-    for (const row of data) {
-      let { nombre, curso, fecha } = row;
-      if (!fecha) {
-        fecha = defaultDate;
-        console.warn(`La fecha no estaba definida para ${nombre}, se asignó la fecha por defecto: ${defaultDate}`);
-      }
-      const id = generateUniqueId();
-      const hashHex = await generateHash(id);
-      const pdfBlob = await generarPDFIndividual(nombre, curso, fecha, id, hashHex);
-      await saveCertificateToFirestore(id, nombre, curso, fecha, hashHex);
-      zip.file(`certificado_${id}.pdf`, pdfBlob);
+    if (importType === 'students') {
+      await importStudents(data);
+    } else {
+      await importCertificates(data); // Función existente para certificados
     }
-    const zipBlob = await zip.generateAsync({ type: 'blob' });
-    const zipUrl = URL.createObjectURL(zipBlob);
-    const a = document.createElement('a');
-    a.href = zipUrl;
-    a.download = 'certificados.zip';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    showToast('success', 'Certificates Generated', 'The certificates have been generated and downloaded successfully.');
+
   } catch (error) {
     console.error('Error importing CSV:', error);
-    showToast('error', 'Import Failed', 'An error occurred while importing the CSV file.');
+    showToast('error', 'Import Failed', error.message || 'An error occurred.');
   } finally {
     hideLoading();
     clearFile();
   }
+}
+
+// Función para generar un token aleatorio
+function generateRandomToken() {
+  return 'token-' + Math.random().toString(36).substr(2, 9);
+}
+
+// Función para importar estudiantes desde CSV
+// Función para generar un token aleatorio
+function generateRandomToken() {
+  return 'token-' + Math.random().toString(36).substr(2, 9);
+}
+
+// Función para obtener la URL base de la aplicación
+function getBaseUrl() {
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    return `http://${window.location.hostname}:${window.location.port}`;
+  } else if (window.location.hostname.includes('github.io')) {
+    return 'https://most-improve123.github.io/LIMPPL';
+  } else {
+    return `https://${window.location.hostname}`;
+  }
+}
+
+// Función para enviar el magic link por correo electrónico
+async function sendBrevoMagicLinkEmail(email, magicLink) {
+  try {
+    const response = await fetch('https://wespark-backend.onrender.com/send-magic-link', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email, magicLink }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error(`Error al enviar email a ${email}:`, errorData.error || 'Unknown error');
+      return { success: false };
+    }
+    return await response.json();
+  } catch (error) {
+    console.error(`Error de red al enviar email a ${email}:`, error);
+    return { success: false };
+  }
+}
+
+// Función para generar contraseñas aleatorias
+function generateRandomPassword() {
+  return Math.random().toString(36).slice(-10);
+}
+
+// Función para importar estudiantes desde CSV
+async function importStudents(studentsData) {
+  const zip = new JSZip();
+  const defaultDate = new Date().toISOString().split('T')[0];
+  let successCount = 0;
+  let errorCount = 0;
+
+  for (const row of studentsData) {
+    try {
+      const { nombre, email, curso: courseName } = row;
+
+      // Validar datos obligatorios
+      if (!nombre || !email || !courseName) {
+        console.warn(`Faltan datos en la fila: ${JSON.stringify(row)}. Se omitirá.`);
+        errorCount++;
+        continue;
+      }
+
+      // Buscar el curso
+      const course = coursesCache.find(c => c.title.toLowerCase() === courseName.toLowerCase());
+      if (!course) {
+        console.warn(`Curso no encontrado: ${courseName}. Se omitirá.`);
+        errorCount++;
+        continue;
+      }
+
+      // Buscar el estudiante en Firestore
+      const usersRef = dbUsers.collection('users');
+      const query = usersRef.where('email', '==', email);
+      const snapshot = await query.get();
+
+      let userId;
+      if (!snapshot.empty) {
+        // Estudiante existe: actualizar sus cursos
+        userId = snapshot.docs[0].id;
+        const userData = snapshot.docs[0].data();
+        const userCourses = userData.courses || [];
+
+        if (!userCourses.includes(course.id)) {
+          userCourses.push(course.id);
+          await usersRef.doc(userId).update({
+            courses: userCourses,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+          console.log(`Curso "${courseName}" asignado a estudiante existente: ${email}`);
+        } else {
+          console.log(`Estudiante ${email} ya tiene el curso "${courseName}"`);
+        }
+      } else {
+        // Estudiante no existe: crear cuenta nueva
+        const userCredential = await auth.createUserWithEmailAndPassword(
+          email,
+          generateRandomPassword() // Contraseña aleatoria
+        );
+
+        userId = userCredential.user.uid;
+        await usersRef.doc(userId).set({
+          name: nombre,
+          email: email,
+          role: 'graduate',
+          courses: [course.id],
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+
+        // Enviar magic link al nuevo estudiante
+        const token = generateRandomToken();
+        const magicLink = `${getBaseUrl()}/login.html?token=${token}&email=${encodeURIComponent(email)}`;
+        await sendBrevoMagicLinkEmail(email, magicLink);
+
+        console.log(`Nuevo estudiante creado: ${email} con curso "${courseName}"`);
+      }
+
+      // Generar certificado
+      const certificateId = generateUniqueId();
+      const hashHex = await generateHash(certificateId);
+      const pdfBlob = await generarPDFIndividual(nombre, courseName, defaultDate, certificateId, hashHex);
+      zip.file(`certificado_${certificateId}.pdf`, pdfBlob);
+
+      successCount++;
+    } catch (error) {
+      console.error(`Error procesando estudiante ${row.email}:`, error);
+      errorCount++;
+    }
+  }
+
+  // Descargar ZIP con certificados
+  if (successCount > 0) {
+    const zipBlob = await zip.generateAsync({ type: 'blob' });
+    const zipUrl = URL.createObjectURL(zipBlob);
+    const a = document.createElement('a');
+    a.href = zipUrl;
+    a.download = 'certificados_estudiantes.zip';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+
+  showToast(
+    successCount > 0 ? 'success' : 'error',
+    'Import Results',
+    `Success: ${successCount} | Errors: ${errorCount}`
+  );
+}
+
+// Función para generar contraseñas aleatorias
+function generateRandomPassword() {
+  return Math.random().toString(36).slice(-10);
+}
+
+
+
+// Función para generar contraseñas aleatorias (no se usarán, pero Firebase Auth las requiere)
+function generateRandomPassword() {
+  return Math.random().toString(36).slice(-10);
 }
 
 // Función para mostrar loading

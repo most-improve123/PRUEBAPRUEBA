@@ -261,6 +261,27 @@ function deleteCourse(courseId) {
   displayCoursesTable();
 }
 
+// Función para filtrar usuarios en el formulario de cursos
+/**
+ * Filtra los usuarios en el formulario de cursos según el texto ingresado.
+ * Busca coincidencias en el nombre o email del usuario.
+ */
+function filterCourseUsers() {
+  const searchTerm = document.getElementById('course-users-search').value.toLowerCase();
+  const container = document.getElementById('course-users-checkboxes');
+  const allUsers = container.querySelectorAll('.checkbox-item');
+
+  allUsers.forEach(userItem => {
+    const label = userItem.querySelector('label');
+    const userText = label.textContent.toLowerCase();
+
+    if (userText.includes(searchTerm)) {
+      userItem.style.display = 'flex';
+    } else {
+      userItem.style.display = 'none';
+    }
+  });
+}
 // Función para mostrar formulario de usuario
 // Función para mostrar formulario de usuario (modificada para guardar en Firestore)
 function showUserForm(userId = null) {
@@ -679,7 +700,6 @@ function displayAdminCertificatesTable(certificates = certificatesCache) {
         <thead>
           <tr style="border-bottom: 1px solid var(--neutral-200);">
             <th style="text-align: left; padding: 0.75rem; font-weight: 600;">Certificate ID</th>
-            <th style="text-align: left; padding: 0.75rem; font-weight: 600;">Student</th>
             <th style="text-align: left; padding: 0.75rem; font-weight: 600;">Course</th>
             <th style="text-align: left; padding: 0.75rem; font-weight: 600;">Completion Date</th>
             <th style="text-align: left; padding: 0.75rem; font-weight: 600;">Actions</th>
@@ -694,7 +714,6 @@ function displayAdminCertificatesTable(certificates = certificatesCache) {
             return `
               <tr style="border-bottom: 1px solid var(--neutral-200);">
                 <td style="padding: 0.75rem; font-family: monospace; font-weight: 600;">WS-${cert.id}</td>
-                <td style="padding: 0.75rem;">${localStorage.getItem('userName') || cert.nombre}</td>
                 <td style="padding: 0.75rem;">${courseTitle}</td>
                 <td style="padding: 0.75rem;">${currentDate}</td> <!-- Fecha actual -->
                 <td style="padding: 0.75rem;">

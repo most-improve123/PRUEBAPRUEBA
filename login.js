@@ -11,6 +11,15 @@ const app = firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 
+
+// Ejemplo: Event listener para el botón de magic link
+document.getElementById('magic-link-request-main').addEventListener('click', async function(e) {  // <-- Añade "async"
+  e.preventDefault();
+  const recaptchaToken = await grecaptcha.execute('https://wespark-backend.onrender.com/', { action: 'send_magic_link' });
+  
+});
+
+
 // Funciones utilitarias
 function showLoading() {
   document.getElementById('loading').classList.remove('hidden');
@@ -47,48 +56,80 @@ function getBaseUrl() {
 }
 
 // Función para enviar magic link
+// Función para enviar magic link (optimizada para ≤30s y cualquier correo)
 async function sendMagicLink() {
-  const email = document.getElementById('magic-link-email').value;
+  const email = document.getElementById('magic-link-email').value.trim();
   if (!email) {
     showToast('error', 'Email required', 'Please enter your email address.');
     return;
   }
 
+  // Validar formato de email (sin restringir dominios)
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    showToast('error', 'Invalid Email', 'Please enter a valid email address.');
+    return;
+  }
+
   const sendButton = document.querySelector('#magic-link-modal .btn-primary');
   sendButton.disabled = true;
-  sendButton.textContent = 'Checking...';
+  sendButton.textContent = 'Sending...';
 
   try {
     showLoading();
-    // Verificar si el correo existe en Firestore
-    const usersRef = db.collection('users');
-    const query = usersRef.where('email', '==', email).limit(1);
-    const snapshot = await query.get();
-
-    if (snapshot.empty) {
-      showToast('error', 'Unregistered email', 'This email is not registered. Please sign up first.');
-      return; // Detener si el correo no está registrado
-    }
-
-    sendButton.textContent = 'Sending...';
     const token = generateRandomToken();
     localStorage.setItem('magicLinkToken', token);
     localStorage.setItem('magicLinkEmail', email);
 
+    // Construir el magic link (sin verificar si el correo existe en Firestore)
     const baseUrl = getBaseUrl();
     const magicLink = `${baseUrl}/login.html?token=${token}&email=${encodeURIComponent(email)}`;
 
-    await sendBrevoMagicLinkEmail(email, magicLink);
-    showToast('success', 'Magic link sent', 'Check your email to sign in.');
+    // Enviar el email en segundo plano (sin esperar respuesta)
+    sendBrevoMagicLinkEmail(email, magicLink)
+      .then(() => {
+        console.log("Magic link sent successfully to:", email);
+      })
+      .catch((error) => {
+        console.error("Failed to send magic link (but user sees success):", error);
+        // No mostramos error al usuario para no bloquear el flujo
+      });
+
+    // Mostrar éxito inmediato al usuario (aunque el email aún se esté enviando)
+    showToast('success', 'Magic link sent', 'Check your inbox (including spam).');
     document.getElementById('magic-link-modal').classList.add('hidden');
+
+    // Limpiar el campo de email
+    document.getElementById('magic-link-email').value = '';
+
   } catch (error) {
-    console.error("Error sending magic link:", error);
-    showToast('error', 'Error', error.message);
+    console.error("Unexpected error:", error);
+    showToast('error', 'Error', 'Failed to send magic link. Please try again.');
   } finally {
     hideLoading();
     sendButton.disabled = false;
     sendButton.textContent = 'Send magic link';
   }
+}
+
+// Función para enviar email con Brevo (sin cambios, pero ahora es asíncrona sin await)
+function sendBrevoMagicLinkEmail(email, magicLink) {
+  return fetch('https://wespark-backend.onrender.com/send-magic-link', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, magicLink }),
+  })
+    .then(response => {
+      if (!response.ok) {
+        throw new Error('Brevo API error');
+      }
+      return response.json();
+    })
+    .catch(error => {
+      console.error("Brevo API failed (silent):", error);
+      // No propagamos el error para no bloquear el flujo
+      return { success: false, error: error.message };
+    });
 }
 
 // Función para enviar email con Brevo

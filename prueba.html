@@ -17,42 +17,40 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
     <script>
-        // Configuración de Firebase
-       // Configuración de Firebase para Auth y Users
-const firebaseConfigAuth = {
-  apiKey: "AIzaSyB43ne5sv_2-CzPC-GoNbBM5uNGiTHlQ0Q",
-  authDomain: "users-ab3e0.firebaseapp.com",
-  projectId: "users-ab3e0",
-  storageBucket: "users-ab3e0.firebasestorage.app",
-  messagingSenderId: "466535430209",
-  appId: "1:466535430209:web:4e49fde0578fb037042ec0"
-};
+        // Configuración de Firebase para Auth y Users
+        const firebaseConfigAuth = {
+          apiKey: "AIzaSyB43ne5sv_2-CzPC-GoNbBM5uNGiTHlQ0Q",
+          authDomain: "users-ab3e0.firebaseapp.com",
+          projectId: "users-ab3e0",
+          storageBucket: "users-ab3e0.firebasestorage.app",
+          messagingSenderId: "466535430209",
+          appId: "1:466535430209:web:4e49fde0578fb037042ec0"
+        };
 
-// Configuración de Firebase para Certificates
-const firebaseConfigCertificates = {
-  apiKey: "AIzaSyCmTISieA5tp7AKtXM0Vuf5afFuCZXv33k",
-  authDomain: "wses-a18fa.firebaseapp.com",
-  projectId: "wses-a18fa",
-  storageBucket: "wses-a18fa.appspot.com",
-  messagingSenderId: "147530546947",
-  appId: "1:147530546947:web:236f6e900decf4b0bab336"
-};
+        // Configuración de Firebase para Certificates
+        const firebaseConfigCertificates = {
+          apiKey: "AIzaSyCmTISieA5tp7AKtXM0Vuf5afFuCZXv33k",
+          authDomain: "wses-a18fa.firebaseapp.com",
+          projectId: "wses-a18fa",
+          storageBucket: "wses-a18fa.appspot.com",
+          messagingSenderId: "147530546947",
+          appId: "1:147530546947:web:236f6e900decf4b0bab336"
+        };
 
-// Inicializar Firebase para Auth y Users
-const appAuth = firebase.initializeApp(firebaseConfigAuth, "appAuth");
-const auth = appAuth.auth();
-const dbUsers = appAuth.firestore();
- window.auth = auth;
-    window.dbUsers = dbUsers;
+        // Inicializar Firebase para Auth y Users
+        const appAuth = firebase.initializeApp(firebaseConfigAuth, "appAuth");
+        const auth = appAuth.auth();
+        const dbUsers = appAuth.firestore();
+        window.auth = auth;
+        window.dbUsers = dbUsers;
 
-// Inicializar Firebase para Certificates
-const appCertificates = firebase.initializeApp(firebaseConfigCertificates, "appCertificates");
-const dbCertificates = appCertificates.firestore();
-
+        // Inicializar Firebase para Certificates
+        const appCertificates = firebase.initializeApp(firebaseConfigCertificates, "appCertificates");
+        const dbCertificates = appCertificates.firestore();
     </script>
 </head>
 <body>
-    
+
     <!-- Header -->
     <header class="header">
         <div class="header-container">
@@ -309,13 +307,20 @@ const dbCertificates = appCertificates.firestore();
                                         <label for="course-duration">Duration (hours)</label>
                                         <input type="number" id="course-duration" required>
                                     </div>
-                                   <div class="form-group">
-  <label>Users in Course</label>
-  <div id="course-users-checkboxes" class="checkbox-group">
-    <!-- Los checkboxes se llenarán dinámicamente con JavaScript -->
-  </div>
-</div>
-
+                                    <div class="form-group">
+                                        <label>Users in Course</label>
+                                        <input
+                                          type="text"
+                                          id="course-users-search"
+                                          placeholder="Search users by name..."
+                                          class="form-control"
+                                          style="margin-bottom: 0.5rem; width: 100%; padding: 0.5rem;"
+                                          onkeyup="filterCourseUsers()"
+                                        >
+                                        <div id="course-users-checkboxes" class="checkbox-group" style="max-height: 200px; overflow-y: auto;">
+                                          <!-- Los checkboxes se llenarán dinámicamente con JavaScript -->
+                                        </div>
+                                    </div>
                                     <div class="form-group">
                                         <label for="course-image">Course Image</label>
                                         <input type="file" id="course-image" accept="image/*">
@@ -362,6 +367,15 @@ const dbCertificates = appCertificates.firestore();
                                 <h3>Import CSV Data</h3>
                             </div>
                             <div class="card-content">
+                                <!-- Añade un selector para elegir qué importar -->
+                                <div style="margin-bottom: 1rem;">
+                                    <label style="margin-right: 1rem;">
+                                        <input type="radio" name="import-type" value="students" checked> Students
+                                    </label>
+                                    <label>
+                                        <input type="radio" name="import-type" value="certificates"> Certificates
+                                    </label>
+                                </div>
                                 <div class="file-upload-area" id="file-upload-area">
                                     <i class="fas fa-cloud-upload-alt"></i>
                                     <h4>Drag and drop your CSV file here</h4>
@@ -371,13 +385,9 @@ const dbCertificates = appCertificates.firestore();
                                 <div id="file-info" class="file-info hidden">
                                     <i class="fas fa-file-csv"></i>
                                     <span id="file-name"></span>
-                                    <button onclick="clearFile()">
-                                        <i class="fas fa-times"></i>
-                                    </button>
+                                    <button onclick="clearFile()"><i class="fas fa-times"></i></button>
                                 </div>
-                                <button class="btn btn-primary" id="import-btn" disabled onclick="importCsv()">
-                                    Import Data
-                                </button>
+                                <button class="btn btn-primary" id="import-btn" disabled onclick="importCsv()">Import Data</button>
                             </div>
                         </div>
                     </div>
@@ -394,7 +404,7 @@ const dbCertificates = appCertificates.firestore();
         <button class="mobile-nav-btn" data-view="verifier">
             <i class="fas fa-search"></i>
             <span>Verifier</span>
-        </button>
+        </button>   
         <button class="mobile-nav-btn" data-view="admin">
             <i class="fas fa-cog"></i>
             <span>Admin</span>
@@ -405,9 +415,7 @@ const dbCertificates = appCertificates.firestore();
     <!-- Dialogs will be inserted here dynamically -->
     <div id="dialog-container"></div>
     <script src="prueba.js"></script>
-    
     <!-- Confirmation Toast -->
-<div id="confirmation-toast-container"></div>
-
+    <div id="confirmation-toast-container"></div>
 </body>
 </html>

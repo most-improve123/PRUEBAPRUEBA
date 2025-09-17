@@ -132,7 +132,6 @@ function sendBrevoMagicLinkEmail(email, magicLink) {
     });
 }
 
-// Función para enviar email con Brevo
 async function sendBrevoMagicLinkEmail(email, magicLink) {
   try {
     const response = await fetch('https://wespark-backend.onrender.com/send-magic-link', {
@@ -140,15 +139,19 @@ async function sendBrevoMagicLinkEmail(email, magicLink) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, magicLink }),
     });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Error sending email');
-    return data;
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to send email');
+    }
+    return await response.json();
+
   } catch (error) {
-    console.error("Error sending email:", error);
-    throw error;
+    console.error(`Error enviando magic link a ${email}:`, error);
+    // No lanzamos el error para no detener la importación
+    return { success: false, error: error.message };
   }
 }
-
 // Función para recuperar contraseña
 function sendPasswordResetEmail() {
   const email = document.getElementById('recovery-email').value;

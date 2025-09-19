@@ -1,5 +1,5 @@
 // Variables globales
-let coursesCache = JSON.parse(localStorage.getItem('coursesCache')) || [];
+let coursesCache = []; // Cambiado: inicializar como array vacío
 let certificatesCache = [];
 let usersCache = JSON.parse(localStorage.getItem('usersCache')) || [];
 let adminStatsCache = {};
@@ -8,10 +8,10 @@ let currentView = 'graduate';
 let currentCourseId = null;
 let currentImageFile = null;
 let currentUserId = null;
-
 // Añade esto al inicio de tu archivo o dentro de la función donde se usa viewParam
 const urlParams = new URLSearchParams(window.location.search);
-const viewParam = urlParams.get('view'); // Obtiene el parámetro 'view' de la URL
+const viewParam = urlParams.get('view');
+
 // Función para generar un token aleatorio (para magic links)
 function generateRandomToken() {
   return 'token-' + Math.random().toString(36).substr(2, 9);
@@ -43,22 +43,27 @@ async function loadUsers() {
   }
 }
 
-// Función para guardar los cursos en localStorage
-function saveCoursesToLocalStorage() {
-  localStorage.setItem('coursesCache', JSON.stringify(coursesCache));
-}
-
-// Función para cargar los cursos desde localStorage
-function loadCoursesFromLocalStorage() {
-  const savedCourses = localStorage.getItem('coursesCache');
-  if (savedCourses) {
-    coursesCache = JSON.parse(savedCourses);
+// Función para cargar los cursos desde Firestore (modificada)
+async function loadCoursesFromFirestore() {
+  try {
+    const coursesSnapshot = await dbUsers.collection('courses').get();
+    coursesCache = coursesSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    // Guardar en localStorage
+    localStorage.setItem('coursesCache', JSON.stringify(coursesCache));
+    return coursesCache;
+  } catch (error) {
+    console.error("Error al cargar cursos desde Firestore:", error);
+    showToast('error', 'Error', 'No se pudieron cargar los cursos desde Firestore.');
+    // Si hay error, intentar cargar desde localStorage como fallback
+    const localCourses = localStorage.getItem('coursesCache');
+    if (localCourses) {
+      coursesCache = JSON.parse(localCourses);
+    }
+    return coursesCache;
   }
-}
-
-// Función para generar un ID único
-function generateUniqueId() {
-  return 'WS-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
 }
 
 // Función para generar un hash
@@ -105,10 +110,10 @@ async function generarPDFIndividual(nombre, curso, fecha, id, hashHex) {
   const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'A4' });
   const robotoRegularUrl = 'https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-regular-webfont.ttf';
   const robotoBoldUrl = 'https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-bold-webfont.ttf';
+
   const loadAndRegisterFont = async (url, fontName, fontStyle) => {
     const response = await fetch(url);
     const fontData = await response.arrayBuffer();
-    
     const base64Font = btoa(
       new Uint8Array(fontData).reduce(
         (data, byte) => data + String.fromCharCode(byte),
@@ -118,7 +123,7 @@ async function generarPDFIndividual(nombre, curso, fecha, id, hashHex) {
     doc.addFileToVFS(`${fontName}.ttf`, base64Font);
     doc.addFont(`${fontName}.ttf`, fontName, fontStyle);
   };
-  
+
   const loadImage = (src) => {
     return new Promise((resolve, reject) => {
       const img = new Image();
@@ -128,6 +133,7 @@ async function generarPDFIndividual(nombre, curso, fecha, id, hashHex) {
       img.src = src;
     });
   };
+
   try {
     await loadAndRegisterFont(robotoRegularUrl, 'Roboto', 'normal');
     await loadAndRegisterFont(robotoBoldUrl, 'Roboto', 'bold');
@@ -135,6 +141,7 @@ async function generarPDFIndividual(nombre, curso, fecha, id, hashHex) {
     const fondo = await loadImage(fondoURL);
     const qrUrl = generateQRCodeLink(id);
     const qrImage = await loadImage(qrUrl);
+
     doc.addImage(fondo, 'JPEG', 0, 0, 850, 595);
     doc.setFont('Roboto', 'bold');
     doc.setFontSize(37);
@@ -152,11 +159,13 @@ async function generarPDFIndividual(nombre, curso, fecha, id, hashHex) {
     const text1 = "skills for real-world impact. This certificate celebrates your participation in our interactive, innovation-focused";
     doc.text(doc.splitTextToSize(text1, 700), 80, 270);
     doc.text("training. Now go out there and release your inner genius!", 260, 290);
+
     const fechaActual = new Date();
     const dia = String(fechaActual.getDate()).padStart(2, '0');
     const mes = String(fechaActual.getMonth() + 1).padStart(2, '0');
     const anio = fechaActual.getFullYear();
     const fechaFormateada = `${dia}.${mes}.${anio}`;
+
     doc.setFont('Roboto', 'bold');
     doc.setFontSize(13);
     doc.setTextColor(255, 255, 255);
@@ -167,10 +176,11 @@ async function generarPDFIndividual(nombre, curso, fecha, id, hashHex) {
     doc.text(`ID: ${id}`, 4, 15);
     doc.text(`Hash: ${hashHex}`, 263, 585);
     doc.addImage(qrImage, 'PNG', 124, 460, 100, 100);
+
     return doc.output('blob');
   } catch (error) {
     console.error("Error al generar PDF:", error);
-    alert(`⚠️ Error al generar el PDF para ${nombre}`);
+    alert(`Error al generar el PDF para ${nombre}`);
     throw error;
   }
 }
@@ -181,15 +191,10 @@ async function downloadCertificate(certificateId) {
     try {
         const certificate = certificatesCache.find(cert => cert.id == certificateId);
         if (!certificate) throw new Error('Certificate not found');
-
         const id = generateUniqueId();
         const hashHex = await generateHash(id);
         const userName = localStorage.getItem('userName') || certificate.nombre;
-
-        // Guardar en Firestore (opcional)
         await saveCertificateToFirestore(id, userName, certificate.course.title, certificate.completionDate, hashHex);
-
-        // Construir la URL para download.html
         const baseUrl = 'https://wespark-download.onrender.com/download.html';
         const params = new URLSearchParams();
         params.append('id', id);
@@ -197,12 +202,8 @@ async function downloadCertificate(certificateId) {
         params.append('curso', certificate.course.title);
         params.append('fecha', certificate.completionDate);
         params.append('hashHex', hashHex);
-
         const downloadUrl = `${baseUrl}?${params.toString()}`;
-
-        // Abrir en una nueva pestaña (fuera del iframe de Wix)
         window.open(downloadUrl, '_blank');
-
     } catch (error) {
         console.error('Download error:', error);
         showToast('error', 'Download Failed', 'Failed to prepare certificate. Please try again.');
@@ -210,6 +211,35 @@ async function downloadCertificate(certificateId) {
         hideLoading();
     }
 }
+
+// Función para migrar imágenes de blob a Base64
+async function migrateBlobImagesToBase64() {
+  // Primero cargar los cursos frescos desde Firestore
+  await loadCoursesFromFirestore();
+  for (const course of coursesCache) {
+    if (course.image && course.image.startsWith('blob:')) {
+      try {
+        const response = await fetch(course.image);
+        const blob = await response.blob();
+        const reader = new FileReader();
+        const base64 = await new Promise((resolve) => {
+          reader.onload = () => resolve(reader.result);
+          reader.readAsDataURL(blob);
+        });
+        // Actualizar solo este curso en Firestore
+        await dbUsers.collection('courses').doc(course.id.toString()).update({
+          image: base64
+        });
+      } catch (error) {
+        console.error(`Error migrando imagen del curso ${course.id}:`, error);
+        // No hacemos nada con defaultImageBase64 aquí para no sobrescribir
+      }
+    }
+  }
+  // Recargar todos los cursos para asegurarnos de que están sincronizados
+  await loadCoursesFromFirestore();
+}
+
 // Función para agregar curso
 function addCourse() {
   currentCourseId = null;
@@ -249,6 +279,31 @@ function editCourse(courseId) {
   }
 }
 
+// Función para eliminar curso
+async function deleteCourse(courseId) {
+  const isConfirmed = confirm("Are you sure you want to delete this course? This action cannot be undone.");
+  if (!isConfirmed) return;
+  try {
+    showLoading();
+    // Eliminar de Firestore
+    await dbUsers.collection('courses').doc(courseId.toString()).delete();
+    // Eliminar de coursesCache
+    coursesCache = coursesCache.filter(course => course.id !== courseId);
+    // Eliminar de localStorage
+    localStorage.removeItem(`courseImage_${courseId}`);
+    localStorage.setItem('coursesCache', JSON.stringify(coursesCache));
+    // Actualizar la tabla de cursos
+    displayCoursesTable();
+    showToast('success', 'Course Deleted', 'The course has been deleted successfully.');
+  } catch (error) {
+    console.error("Error deleting course:", error);
+    showToast('error', 'Error', 'Failed to delete course. Check console for details.');
+  } finally {
+    hideLoading();
+  }
+}
+
+// Función para subir imagen
 async function uploadImage(file) {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -260,28 +315,14 @@ async function uploadImage(file) {
   });
 }
 
-// Función para eliminar curso
-function deleteCourse(courseId) {
-  localStorage.removeItem(`courseImage_${courseId}`);
-  coursesCache = coursesCache.filter(course => course.id !== courseId);
-  saveCoursesToLocalStorage();
-  displayCoursesTable();
-}
-
 // Función para filtrar usuarios en el formulario de cursos
-/**
- * Filtra los usuarios en el formulario de cursos según el texto ingresado.
- * Busca coincidencias en el nombre o email del usuario.
- */
 function filterCourseUsers() {
   const searchTerm = document.getElementById('course-users-search').value.toLowerCase();
   const container = document.getElementById('course-users-checkboxes');
   const allUsers = container.querySelectorAll('.checkbox-item');
-
   allUsers.forEach(userItem => {
     const label = userItem.querySelector('label');
     const userText = label.textContent.toLowerCase();
-
     if (userText.includes(searchTerm)) {
       userItem.style.display = 'flex';
     } else {
@@ -289,23 +330,19 @@ function filterCourseUsers() {
     }
   });
 }
+
 // Función para mostrar formulario de usuario
-// Función para mostrar formulario de usuario (modificada para guardar en Firestore)
 function showUserForm(userId = null) {
   currentUserId = userId;
   const formTitle = document.getElementById('user-form-title');
   const formContainer = document.getElementById('user-form-container');
   const form = document.getElementById('user-form');
-
   if (!form || !formContainer) {
     console.error("El formulario de usuarios no se encontró en el DOM.");
     return;
   }
-
   form.reset();
-
   if (userId !== null) {
-    // Modo edición: cargar datos del usuario
     const user = usersCache.find(u => u.id === userId);
     if (user) {
       document.getElementById('user-name').value = user.name || '';
@@ -320,41 +357,32 @@ function showUserForm(userId = null) {
   } else {
     formTitle.textContent = 'Add User';
   }
-
   formContainer.classList.remove('hidden');
-
   form.onsubmit = async function(e) {
     e.preventDefault();
     const nameInput = form.querySelector('#user-name');
     const emailInput = form.querySelector('#user-email');
     const roleInput = form.querySelector('#user-role');
-
     if (!nameInput || !emailInput || !roleInput) {
       console.error("Uno o más elementos del formulario no se encontraron.");
       showToast('error', 'Form Error', 'Form elements not found.');
       return;
     }
-
     const name = nameInput.value.trim();
     const email = emailInput.value.trim();
     const role = roleInput.value;
-
     if (!name || !email) {
       showToast('error', 'Invalid Data', 'Name and email are required.');
       return;
     }
-
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       showToast('error', 'Invalid Email', 'Please enter a valid email address.');
       return;
     }
-
     try {
       showLoading();
-
       if (currentUserId !== null) {
-        // Modo edición: actualizar usuario en Firestore
         await dbUsers.collection('users').doc(currentUserId).update({
           name: name,
           email: email,
@@ -362,51 +390,36 @@ function showUserForm(userId = null) {
           updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         });
         showToast('success', 'User Updated', 'The user has been updated successfully.');
-
-        // Actualizar usersCache
         usersCache = usersCache.map(user => {
           if (user.id === currentUserId) {
             return { id: currentUserId, name, email, role };
           }
           return user;
         });
-
       } else {
-        // Modo creación: verificar si el email ya existe
         const usersRef = dbUsers.collection('users');
         const snapshot = await usersRef.where('email', '==', email).get();
-
         if (!snapshot.empty) {
           showToast('error', 'Email in Use', 'This email is already registered.');
           return;
         }
-
-        // Crear usuario en Firestore (sin autenticación, solo datos)
         const newUserRef = await dbUsers.collection('users').add({
           name: name,
           email: email,
           role: role,
           createdAt: firebase.firestore.FieldValue.serverTimestamp()
         });
-
-        // Añadir a usersCache con el ID generado por Firestore
         usersCache.push({
           id: newUserRef.id,
           name: name,
           email: email,
           role: role
         });
-
         showToast('success', 'User Created', 'The user has been created successfully.');
       }
-
-      // Guardar en localStorage (opcional, para compatibilidad con tu código actual)
       localStorage.setItem('usersCache', JSON.stringify(usersCache));
-
-      // Actualizar la tabla
       displayUsersTable();
       hideUserForm();
-
     } catch (error) {
       console.error("Error saving user:", error);
       showToast('error', 'Error', 'Failed to save user. Check console for details.');
@@ -449,23 +462,11 @@ function loadUsersFromLocalStorage() {
 async function deleteUser(userId) {
   const isConfirmed = confirm("Are you sure you want to delete this user? This action cannot be undone.");
   if (!isConfirmed) return;
-
   try {
     showLoading();
-    // 1. Eliminar en Firestore
     await dbUsers.collection('users').doc(userId).delete();
-
-    // 2. Eliminar en Firebase Authentication
-    // Solo funciona si el usuario actual es administrador y tiene permisos
-    // (No es seguro hacerlo desde el frontend en producción)
-    await auth.currentUser.delete(); // Esto eliminaría al usuario actual, no al usuario con userId
-    // Para eliminar a otro usuario, necesitas Firebase Admin SDK en un backend
-    // Alternativa: Usar una función de Firebase (Cloud Function) para eliminar al usuario
-
-    // 3. Eliminar de usersCache
-    usersCache = usersCache.filter(user => user.id !== userId);
-
     showToast('success', 'User Deleted', 'The user has been deleted successfully.');
+    usersCache = usersCache.filter(user => user.id !== userId);
     displayUsersTable();
   } catch (error) {
     console.error("Error deleting user:", error);
@@ -561,7 +562,7 @@ function displayCoursesTable(courses = coursesCache) {
                 <td style="padding: 0.75rem;">${course.duration} hours</td>
                 <td style="padding: 0.75rem;">
                   ${userCount > 0 ?
-                    `<button class="btn-users-count" onclick="showCourseUsers(${course.id})">${userCount}</button>` :
+                    `<button class="btn-users-count" onclick="showCourseUsers('${course.id}')">${userCount}</button>` :
                     '<span style="color: var(--neutral-600);">None</span>'
                   }
                 </td>
@@ -574,10 +575,10 @@ function displayCoursesTable(courses = coursesCache) {
                   >
                 </td>
                 <td style="padding: 0.75rem;">
-                  <button class="btn btn-outline" style="padding: 0.25rem 0.5rem; margin-right: 0.5rem;" onclick="editCourse(${course.id})">
+                  <button class="btn btn-outline" style="padding: 0.25rem 0.5rem; margin-right: 0.5rem;" onclick="editCourse('${course.id}')">
                     <i class="fas fa-edit"></i>
                   </button>
-                  <button class="btn btn-outline" style="padding: 0.25rem 0.5rem; color: var(--destructive); border-color: var(--destructive);" onclick="deleteCourse(${course.id})">
+                  <button class="btn btn-outline" style="padding: 0.25rem 0.5rem; color: var(--destructive); border-color: var(--destructive);" onclick="deleteCourse('${course.id}')">
                     <i class="fas fa-trash"></i>
                   </button>
                 </td>
@@ -590,28 +591,17 @@ function displayCoursesTable(courses = coursesCache) {
   `;
 }
 
-// Función para eliminar curso
-function deleteCourse(courseId) {
-  localStorage.removeItem(`courseImage_${courseId}`);
-  coursesCache = coursesCache.filter(course => course.id !== courseId);
-  saveCoursesToLocalStorage();
-  displayCoursesTable();
-}
-
 // Función para cargar usuarios en el formulario de cursos
 function loadUsersIntoCourseForm() {
   const container = document.getElementById('course-users-checkboxes');
   container.innerHTML = '';
-
   usersCache.forEach(user => {
     const checkboxItem = document.createElement('div');
     checkboxItem.className = 'checkbox-item';
-
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.id = `user-${user.id}`;
     checkbox.value = user.id;
-
     const label = document.createElement('label');
     label.htmlFor = `user-${user.id}`;
     label.innerHTML = `
@@ -624,13 +614,10 @@ function loadUsersIntoCourseForm() {
         }).join(', ') || 'None'}
       </small>
     `;
-
     checkboxItem.appendChild(checkbox);
     checkboxItem.appendChild(label);
     container.appendChild(checkboxItem);
   });
-
-  // Marcar usuarios ya seleccionados (si es edición)
   if (currentCourseId) {
     const course = coursesCache.find(c => c.id === currentCourseId);
     if (course?.users) {
@@ -646,12 +633,10 @@ function loadUsersIntoCourseForm() {
 function showCourseUsers(courseId) {
   const course = coursesCache.find(c => c.id === courseId);
   if (!course) return;
-
   if (!course.users || course.users.length === 0) {
     showToast('warning', 'No Users', 'This course has no participants.');
     return;
   }
-
   const modal = document.createElement('div');
   modal.className = 'course-users-modal';
   modal.innerHTML = `
@@ -696,7 +681,7 @@ async function migrateBlobImagesToBase64() {
       }
     }
   }
-  saveCoursesToLocalStorage();
+   loadCoursesFromFirestore();
 }
 
 // Imagen por defecto en Base64
@@ -731,13 +716,12 @@ function displayAdminCertificatesTable(certificates = certificatesCache) {
           ${validCertificates.map(cert => {
             const course = coursesCache.find(c => c.id === cert.course.id);
             const courseTitle = course ? course.title : 'Unknown Course';
-            // Genera la fecha actual en formato local
             const currentDate = new Date().toLocaleDateString();
             return `
               <tr style="border-bottom: 1px solid var(--neutral-200);">
                 <td style="padding: 0.75rem; font-family: monospace; font-weight: 600;">WS-${cert.id}</td>
                 <td style="padding: 0.75rem;">${courseTitle}</td>
-                <td style="padding: 0.75rem;">${currentDate}</td> <!-- Fecha actual -->
+                <td style="padding: 0.75rem;">${currentDate}</td>
                 <td style="padding: 0.75rem;">
                   <button class="btn btn-outline" style="padding: 0.25rem 0.5rem;" onclick="downloadCertificate(${cert.id})">
                     <i class="fas fa-download"></i>
@@ -768,7 +752,6 @@ function loadAdminData() {
 
 // Función para actualizar estadísticas de administrador
 function updateAdminStats() {
-  // Calcula el total de certificados según la cantidad en certificatesCache
   const totalCertificates = certificatesCache.length;
   document.getElementById('admin-total-users').textContent = usersCache.length || 0;
   document.getElementById('admin-total-courses').textContent = coursesCache.length || 0;
@@ -820,7 +803,6 @@ function showConfirmationToast(userId) {
 }
 
 // Función para inicializar la aplicación
-// En prueba.js, dentro de initializeApp()
 function initializeApp() {
   auth.onAuthStateChanged(user => {
     if (user) {
@@ -830,23 +812,18 @@ function initializeApp() {
       console.log("No hay usuario autenticado.");
     }
   });
-
   setupNavigation();
   setupTabs();
   setupFileUpload();
-
   const urlParams = new URLSearchParams(window.location.search);
   const uidFromUrl = urlParams.get('uid');
   const viewParam = urlParams.get('view');
-
   if (uidFromUrl) {
     localStorage.setItem('userUID', uidFromUrl);
     console.log("UID del usuario desde la URL:", uidFromUrl);
   }
-
   const userUID = localStorage.getItem('userUID');
   console.log("UID del usuario en localStorage (prueba.js):", userUID);
-
   if (!userUID) {
     console.error("No se encontró el UID del usuario en localStorage.");
     showToast('error', 'Error', 'No se encontró el UID del usuario. Por favor, inicia sesión de nuevo.');
@@ -855,51 +832,39 @@ function initializeApp() {
     }, 2000);
     return;
   }
-
   const certificateId = urlParams.get('certificateId');
   if (certificateId) {
     showView('verifier');
     document.getElementById('certificate-id').value = certificateId;
     setTimeout(() => verifyCertificate(), 100);
   }
-
-  // Cargar el nombre del usuario en el header
   const userName = localStorage.getItem('userName');
   const userRole = localStorage.getItem('userRole');
   const userInfoSpan = document.querySelector('.user-info span');
-
   if (userName && userInfoSpan) {
     userInfoSpan.textContent = userName;
   } else if (userInfoSpan) {
     userInfoSpan.textContent = 'User';
   }
-
-  // Ocultar/mostrar pestañas según el rol del usuario
   const adminBtns = document.querySelectorAll('.nav-btn[data-view="admin"], .mobile-nav-btn[data-view="admin"]');
   const graduateBtns = document.querySelectorAll('.nav-btn[data-view="graduate"], .mobile-nav-btn[data-view="graduate"]');
   const verifierBtns = document.querySelectorAll('.nav-btn[data-view="verifier"], .mobile-nav-btn[data-view="verifier"]');
-
   if (userRole === 'admin') {
-    // Para admin: ocultar pestañas de graduate y verifier
     graduateBtns.forEach(btn => btn.style.display = 'none');
     verifierBtns.forEach(btn => btn.style.display = 'none');
-    // Mostrar vista de admin por defecto
     if (viewParam) {
       showView(viewParam);
     } else {
       showView('admin');
     }
   } else if (userRole === 'graduate') {
-    // Para graduate: ocultar pestaña de admin
     adminBtns.forEach(btn => btn.style.display = 'none');
-    // Mostrar vista de graduate por defecto
     if (viewParam) {
       showView(viewParam);
     } else {
       showView('graduate');
     }
   } else {
-    // Rol no reconocido: mostrar solo graduate por defecto
     adminBtns.forEach(btn => btn.style.display = 'none');
     if (viewParam) {
       showView(viewParam);
@@ -907,7 +872,6 @@ function initializeApp() {
       showView('graduate');
     }
   }
-
   loadInitialData();
 }
 
@@ -917,28 +881,18 @@ function setupNavigation() {
 }
 
 // Función para mostrar vista
-// Función para mostrar la vista correspondiente (admin, graduate, verifier)
 function showView(viewName) {
-  // Ocultar todas las vistas
   document.querySelectorAll('.view').forEach(view => {
     view.classList.remove('active');
   });
-
-  // Mostrar la vista seleccionada
   const targetView = document.getElementById(`${viewName}-view`);
   if (targetView) {
     targetView.classList.add('active');
   }
-
-  // Actualizar los botones de navegación
   document.querySelectorAll('.nav-btn, .mobile-nav-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.view === viewName);
   });
-
-  // Cargar datos según la vista
   loadViewData(viewName);
-
-  // Scroll al inicio de la página
   window.scrollTo(0, 0);
 }
 
@@ -1035,7 +989,6 @@ function updateGraduateStats(certificates) {
 }
 
 // Función para verificar certificado
-// Función para verificar certificado
 async function verifyCertificate(certificateId = null) {
   let idToVerify = certificateId;
   if (!idToVerify) {
@@ -1047,7 +1000,7 @@ async function verifyCertificate(certificateId = null) {
   }
   const btnText = document.querySelector('.verify-btn-text');
   const btnSpinner = document.querySelector('.verify-btn-spinner');
-  if (btnText && btnSpinner) { // Validar que existan
+  if (btnText && btnSpinner) {
     btnText.classList.add('hidden');
     btnSpinner.classList.add('active');
   }
@@ -1076,7 +1029,7 @@ async function verifyCertificate(certificateId = null) {
     console.error("Error verifying certificate: ", error);
     showToast('error', 'Verification Failed', 'An error occurred while verifying the certificate.');
   } finally {
-    if (btnText && btnSpinner) { // Validar que existan
+    if (btnText && btnSpinner) {
       btnText.classList.remove('hidden');
       btnSpinner.classList.remove('active');
     }
@@ -1253,8 +1206,6 @@ function clearFile() {
   importBtn.disabled = true;
 }
 
-
-
 function validateCsvStructure(data, type) {
   if (type === 'students') {
     const requiredFields = ['nombre', 'email', 'curso'];
@@ -1284,33 +1235,7 @@ async function importCsv() {
     showToast('error', 'No File Selected', 'Please select a CSV file to import.');
     return;
   }
-
-  // Función para enviar el magic link por correo electrónico
-async function sendBrevoMagicLinkEmail(email, magicLink) {
-  try {
-    const response = await fetch('https://wespark-backend.onrender.com/send-magic-link', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ email, magicLink }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error(`Error al enviar email a ${email}:`, errorData.error || 'Unknown error');
-      return { success: false };
-    }
-    return await response.json();
-  } catch (error) {
-    console.error(`Error de red al enviar email a ${email}:`, error);
-    return { success: false };
-  }
-}
-
-  // Verificar qué tipo de importación se seleccionó
   const importType = document.querySelector('input[name="import-type"]:checked').value;
-
   showLoading();
   try {
     const results = await new Promise((resolve, reject) => {
@@ -1320,14 +1245,12 @@ async function sendBrevoMagicLinkEmail(email, magicLink) {
         error: reject
       });
     });
-
     const data = results.data;
     if (importType === 'students') {
       await importStudents(data);
     } else {
-      await importCertificates(data); // Función existente para certificados
+      await importCertificates(data);
     }
-
   } catch (error) {
     console.error('Error importing CSV:', error);
     showToast('error', 'Import Failed', error.message || 'An error occurred.');
@@ -1342,23 +1265,6 @@ function generateRandomToken() {
   return 'token-' + Math.random().toString(36).substr(2, 9);
 }
 
-// Función para importar estudiantes desde CSV
-// Función para generar un token aleatorio
-function generateRandomToken() {
-  return 'token-' + Math.random().toString(36).substr(2, 9);
-}
-
-// Función para obtener la URL base de la aplicación
-function getBaseUrl() {
-  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-    return `http://${window.location.hostname}:${window.location.port}`;
-  } else if (window.location.hostname.includes('github.io')) {
-    return 'https://most-improve123.github.io/LIMPPL';
-  } else {
-    return `https://${window.location.hostname}`;
-  }
-}
-
 // Función para enviar el magic link por correo electrónico
 async function sendBrevoMagicLinkEmail(email, magicLink) {
   try {
@@ -1369,7 +1275,6 @@ async function sendBrevoMagicLinkEmail(email, magicLink) {
       },
       body: JSON.stringify({ email, magicLink }),
     });
-
     if (!response.ok) {
       const errorData = await response.json();
       console.error(`Error al enviar email a ${email}:`, errorData.error || 'Unknown error');
@@ -1393,38 +1298,28 @@ async function importStudents(studentsData) {
   const defaultDate = new Date().toISOString().split('T')[0];
   let successCount = 0;
   let errorCount = 0;
-
   for (const row of studentsData) {
     try {
       const { nombre, email, curso: courseName } = row;
-
-      // Validar datos obligatorios
       if (!nombre || !email || !courseName) {
         console.warn(`Faltan datos en la fila: ${JSON.stringify(row)}. Se omitirá.`);
         errorCount++;
         continue;
       }
-
-      // Buscar el curso
       const course = coursesCache.find(c => c.title.toLowerCase() === courseName.toLowerCase());
       if (!course) {
         console.warn(`Curso no encontrado: ${courseName}. Se omitirá.`);
         errorCount++;
         continue;
       }
-
-      // Buscar el estudiante en Firestore
       const usersRef = dbUsers.collection('users');
       const query = usersRef.where('email', '==', email);
       const snapshot = await query.get();
-
       let userId;
       if (!snapshot.empty) {
-        // Estudiante existe: actualizar sus cursos
         userId = snapshot.docs[0].id;
         const userData = snapshot.docs[0].data();
         const userCourses = userData.courses || [];
-
         if (!userCourses.includes(course.id)) {
           userCourses.push(course.id);
           await usersRef.doc(userId).update({
@@ -1436,12 +1331,10 @@ async function importStudents(studentsData) {
           console.log(`Estudiante ${email} ya tiene el curso "${courseName}"`);
         }
       } else {
-        // Estudiante no existe: crear cuenta nueva
         const userCredential = await auth.createUserWithEmailAndPassword(
           email,
-          generateRandomPassword() // Contraseña aleatoria
+          generateRandomPassword()
         );
-
         userId = userCredential.user.uid;
         await usersRef.doc(userId).set({
           name: nombre,
@@ -1450,29 +1343,21 @@ async function importStudents(studentsData) {
           courses: [course.id],
           createdAt: firebase.firestore.FieldValue.serverTimestamp()
         });
-
-        // Enviar magic link al nuevo estudiante
         const token = generateRandomToken();
         const magicLink = `${getBaseUrl()}/login.html?token=${token}&email=${encodeURIComponent(email)}`;
         await sendBrevoMagicLinkEmail(email, magicLink);
-
         console.log(`Nuevo estudiante creado: ${email} con curso "${courseName}"`);
       }
-
-      // Generar certificado
       const certificateId = generateUniqueId();
       const hashHex = await generateHash(certificateId);
       const pdfBlob = await generarPDFIndividual(nombre, courseName, defaultDate, certificateId, hashHex);
       zip.file(`certificado_${certificateId}.pdf`, pdfBlob);
-
       successCount++;
     } catch (error) {
       console.error(`Error procesando estudiante ${row.email}:`, error);
       errorCount++;
     }
   }
-
-  // Descargar ZIP con certificados
   if (successCount > 0) {
     const zipBlob = await zip.generateAsync({ type: 'blob' });
     const zipUrl = URL.createObjectURL(zipBlob);
@@ -1483,24 +1368,11 @@ async function importStudents(studentsData) {
     a.click();
     document.body.removeChild(a);
   }
-
   showToast(
     successCount > 0 ? 'success' : 'error',
     'Import Results',
     `Success: ${successCount} | Errors: ${errorCount}`
   );
-}
-
-// Función para generar contraseñas aleatorias
-function generateRandomPassword() {
-  return Math.random().toString(36).slice(-10);
-}
-
-
-
-// Función para generar contraseñas aleatorias (no se usarán, pero Firebase Auth las requiere)
-function generateRandomPassword() {
-  return Math.random().toString(36).slice(-10);
 }
 
 // Función para mostrar loading
@@ -1563,14 +1435,12 @@ function filterCoursesTable(searchTerm) {
 function filterCertificatesTable(searchTerm) {
   const term = searchTerm.toLowerCase();
   const filteredCertificates = certificatesCache.filter(cert => {
-    // Asegúrate de que el ID del certificado incluya "ws-" al comparar
     const certId = cert.id ? `ws-${String(cert.id).toLowerCase()}` : '';
     const idMatch = certId.includes(term);
     return idMatch;
   });
   displayAdminCertificatesTable(filteredCertificates);
 }
-
 
 // Función para configurar event listeners
 function setupEventListeners() {
@@ -1601,10 +1471,10 @@ function setupEventListeners() {
 
 // Evento DOMContentLoaded
 document.addEventListener('DOMContentLoaded', async function() {
-  await loadUsers(); // Espera a que los usuarios se carguen
-  loadCoursesFromLocalStorage();
+  await loadUsers();
+  await loadCoursesFromFirestore();
   displayUsersTable();
-  displayCoursesTable(); // Ahora usersCache está cargado
+  displayCoursesTable();
 
   const courseForm = document.getElementById('course-form');
   if (courseForm) {
@@ -1617,7 +1487,6 @@ document.addEventListener('DOMContentLoaded', async function() {
       const selectedUsers = Array.from(checkboxes).map(checkbox => checkbox.value);
       const imageInput = document.getElementById('course-image');
       let imageBase64 = '';
-
       if (imageInput.files.length > 0) {
         const file = imageInput.files[0];
         imageBase64 = await uploadImage(file);
@@ -1627,39 +1496,68 @@ document.addEventListener('DOMContentLoaded', async function() {
           imageBase64 = course.image || '';
         }
       }
-
-      if (currentCourseId) {
-        // Editar curso existente
-        coursesCache = coursesCache.map(c => {
-          if (c.id === currentCourseId) {
-            return {
-              ...c,
-              title,
-              description,
-              duration,
-              image: imageBase64,
-              users: selectedUsers // Guardar los usuarios seleccionados
-            };
-          }
-          return c;
-        });
-      } else {
-        // Crear nuevo curso
-        const newId = coursesCache.length > 0 ? Math.max(...coursesCache.map(c => c.id)) + 1 : 1;
-        coursesCache.push({
-          id: newId,
-          title,
-          description,
-          duration,
-          image: imageBase64,
-          users: selectedUsers // Guardar los usuarios seleccionados
-        });
+      try {
+        showLoading();
+        if (currentCourseId) {
+          // Editar curso existente en Firestore
+          await dbUsers.collection('courses').doc(currentCourseId.toString()).update({
+            title: title,
+            description: description,
+            duration: duration,
+            image: imageBase64,
+            users: selectedUsers,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+          // Actualizar coursesCache
+          coursesCache = coursesCache.map(c => {
+            if (c.id === currentCourseId) {
+              return {
+                ...c,
+                title,
+                description,
+                duration,
+                image: imageBase64,
+                users: selectedUsers
+              };
+            }
+            return c;
+          });
+        } else {
+          // Crear nuevo curso en Firestore
+          const newCourseRef = dbUsers.collection('courses').doc();
+          const newCourseId = newCourseRef.id;
+          await newCourseRef.set({
+            title: title,
+            description: description,
+            duration: duration,
+            image: imageBase64,
+            users: selectedUsers,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+          // Añadir el nuevo curso a coursesCache
+          coursesCache.push({
+            id: newCourseId,
+            title: title,
+            description: description,
+            duration: duration,
+            image: imageBase64,
+            users: selectedUsers
+          });
+        }
+        // Guardar en localStorage
+        localStorage.setItem('coursesCache', JSON.stringify(coursesCache));
+        // Actualizar la tabla de cursos
+        displayCoursesTable();
+        // Ocultar el formulario
+        document.getElementById('course-form-container').classList.add('hidden');
+        showToast('success', 'Course Saved', 'The course has been saved successfully.');
+      } catch (error) {
+        console.error("Error saving course:", error);
+        showToast('error', 'Error', 'Failed to save course. Check console for details.');
+      } finally {
+        hideLoading();
       }
-
-      saveCoursesToLocalStorage();
-      displayCoursesTable();
-      loadGraduateData();
-      document.getElementById('course-form-container').classList.add('hidden');
     });
   } else {
     console.error('Course form not found in the DOM.');
@@ -1680,12 +1578,13 @@ document.addEventListener('DOMContentLoaded', async function() {
   const adminBtns = document.querySelectorAll('.nav-btn[data-view="admin"], .mobile-nav-btn[data-view="admin"]');
   const graduateBtns = document.querySelectorAll('.nav-btn[data-view="graduate"], .mobile-nav-btn[data-view="graduate"]');
   const verifierBtns = document.querySelectorAll('.nav-btn[data-view="verifier"], .mobile-nav-btn[data-view="verifier"]');
+
   if (viewParam) {
-    showView(viewParam); // Mostrar la vista especificada en la URL (admin o graduate)
+    showView(viewParam);
   } else if (userRole === 'admin') {
-    showView('admin'); // Mostrar panel de admin si el rol es admin
+    showView('admin');
   } else {
-    showView('graduate'); // Mostrar panel de graduate por defecto
+    showView('graduate');
   }
 
   loadInitialData();

@@ -1,5 +1,5 @@
 // Variables globales
-let coursesCache = []; // Cambiado: inicializar como array vacío
+let coursesCache = [];
 let certificatesCache = [];
 let usersCache = JSON.parse(localStorage.getItem('usersCache')) || [];
 let adminStatsCache = {};
@@ -8,7 +8,6 @@ let currentView = 'graduate';
 let currentCourseId = null;
 let currentImageFile = null;
 let currentUserId = null;
-// Añade esto al inicio de tu archivo o dentro de la función donde se usa viewParam
 const urlParams = new URLSearchParams(window.location.search);
 const viewParam = urlParams.get('view');
 
@@ -43,7 +42,7 @@ async function loadUsers() {
   }
 }
 
-// Función para cargar los cursos desde Firestore (modificada)
+// Función para cargar los cursos desde Firestore
 async function loadCoursesFromFirestore() {
   try {
     const coursesSnapshot = await dbUsers.collection('courses').get();
@@ -51,19 +50,41 @@ async function loadCoursesFromFirestore() {
       id: doc.id,
       ...doc.data()
     }));
-    // Guardar en localStorage
     localStorage.setItem('coursesCache', JSON.stringify(coursesCache));
     return coursesCache;
   } catch (error) {
     console.error("Error al cargar cursos desde Firestore:", error);
     showToast('error', 'Error', 'No se pudieron cargar los cursos desde Firestore.');
-    // Si hay error, intentar cargar desde localStorage como fallback
     const localCourses = localStorage.getItem('coursesCache');
     if (localCourses) {
       coursesCache = JSON.parse(localCourses);
     }
     return coursesCache;
   }
+}
+
+// Función para cargar cursos del usuario actual
+async function loadUserCourses() {
+  try {
+    const userUID = localStorage.getItem('userUID');
+    if (!userUID) return [];
+
+    const user = usersCache.find(u => u.id === userUID);
+    if (!user) return [];
+
+    // Si el usuario no tiene cursos asignados, devolver array vacío
+    if (!user.courses || user.courses.length === 0) return [];
+
+    // Filtrar solo los cursos asignados al usuario
+    return coursesCache.filter(course => user.courses.includes(course.id));
+  } catch (error) {
+    console.error("Error al cargar cursos del usuario:", error);
+    return [];
+  }
+}
+// Función para generar un ID único
+function generateUniqueId() {
+  return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 }
 
 // Función para generar un hash
@@ -75,6 +96,7 @@ async function generateHash(input) {
   const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
   return hashHex;
 }
+
 
 // Función para guardar información del certificado en Firestore
 async function saveCertificateToFirestore(id, nombre, curso, fecha, hashHex) {
@@ -187,34 +209,54 @@ async function generarPDFIndividual(nombre, curso, fecha, id, hashHex) {
 
 // Función para descargar certificado
 async function downloadCertificate(certificateId) {
-    showLoading();
-    try {
-        const certificate = certificatesCache.find(cert => cert.id == certificateId);
-        if (!certificate) throw new Error('Certificate not found');
-        const id = generateUniqueId();
-        const hashHex = await generateHash(id);
-        const userName = localStorage.getItem('userName') || certificate.nombre;
-        await saveCertificateToFirestore(id, userName, certificate.course.title, certificate.completionDate, hashHex);
-        const baseUrl = 'https://wespark-download.onrender.com/download.html';
-        const params = new URLSearchParams();
-        params.append('id', id);
-        params.append('nombre', userName);
-        params.append('curso', certificate.course.title);
-        params.append('fecha', certificate.completionDate);
-        params.append('hashHex', hashHex);
-        const downloadUrl = `${baseUrl}?${params.toString()}`;
-        window.open(downloadUrl, '_blank');
-    } catch (error) {
-        console.error('Download error:', error);
-        showToast('error', 'Download Failed', 'Failed to prepare certificate. Please try again.');
-    } finally {
-        hideLoading();
-    }
+  showLoading();
+  try {
+    const certificate = certificatesCache.find(cert => cert.id == certificateId);
+    if (!certificate) throw new Error('Certificate not found');
+
+    const id = generateUniqueId();
+    const hashHex = await generateHash(id);
+    const userName = localStorage.getItem('userName') || certificate.nombre;
+
+    await saveCertificateToFirestore(id, userName, certificate.course.title, certificate.completionDate, hashHex);
+
+    const baseUrl = 'https://wespark-download.onrender.com/download.html';
+    const params = new URLSearchParams();
+    params.append('id', id);
+    params.append('nombre', userName);
+    params.append('curso', certificate.course.title);
+    params.append('fecha', certificate.completionDate);
+    params.append('hashHex', hashHex);
+
+    const downloadUrl = `${baseUrl}?${params.toString()}`;
+    window.open(downloadUrl, '_blank');
+  } catch (error) {
+    console.error('Download error:', error);
+    showToast('error', 'Download Failed', 'Failed to prepare certificate. Please try again.');
+  } finally {
+    hideLoading();
+  }
+}
+
+
+
+function displayCertificates(certificates = certificatesCache) {
+  const grid = document.getElementById('certificates-grid');
+  if (!certificates || certificates.length === 0) {
+    grid.innerHTML = `
+      <div style="grid-column: 1 / -1; text-align: center; padding: 3rem;">
+        <i class="fas fa-tag" style="font-size: 3rem; color: var(--neutral-400); margin-bottom: 1rem;"></i>
+        <h3 style="color: var(--neutral-800); margin-bottom: 0.5rem;">No certificates yet</h3>
+        <p style="color: var(--neutral-600);">Complete a course to earn your first certificate!</p>
+      </div>
+    `;
+    return;
+  }
+  grid.innerHTML = certificates.map(cert => createCertificateCard(cert)).join('');
 }
 
 // Función para migrar imágenes de blob a Base64
 async function migrateBlobImagesToBase64() {
-  // Primero cargar los cursos frescos desde Firestore
   await loadCoursesFromFirestore();
   for (const course of coursesCache) {
     if (course.image && course.image.startsWith('blob:')) {
@@ -226,17 +268,14 @@ async function migrateBlobImagesToBase64() {
           reader.onload = () => resolve(reader.result);
           reader.readAsDataURL(blob);
         });
-        // Actualizar solo este curso en Firestore
         await dbUsers.collection('courses').doc(course.id.toString()).update({
           image: base64
         });
       } catch (error) {
         console.error(`Error migrando imagen del curso ${course.id}:`, error);
-        // No hacemos nada con defaultImageBase64 aquí para no sobrescribir
       }
     }
   }
-  // Recargar todos los cursos para asegurarnos de que están sincronizados
   await loadCoursesFromFirestore();
 }
 
@@ -285,14 +324,24 @@ async function deleteCourse(courseId) {
   if (!isConfirmed) return;
   try {
     showLoading();
-    // Eliminar de Firestore
     await dbUsers.collection('courses').doc(courseId.toString()).delete();
-    // Eliminar de coursesCache
+
+    // Eliminar el curso de los usuarios que lo tienen asignado
+    for (const user of usersCache) {
+      if (user.courses && user.courses.includes(courseId)) {
+        const updatedCourses = user.courses.filter(id => id !== courseId);
+        await dbUsers.collection('users').doc(user.id).update({
+          courses: updatedCourses
+        });
+        // Actualizar caché local
+        const userIndex = usersCache.findIndex(u => u.id === user.id);
+        if (userIndex !== -1) usersCache[userIndex].courses = updatedCourses;
+      }
+    }
+
     coursesCache = coursesCache.filter(course => course.id !== courseId);
-    // Eliminar de localStorage
     localStorage.removeItem(`courseImage_${courseId}`);
     localStorage.setItem('coursesCache', JSON.stringify(coursesCache));
-    // Actualizar la tabla de cursos
     displayCoursesTable();
     showToast('success', 'Course Deleted', 'The course has been deleted successfully.');
   } catch (error) {
@@ -392,7 +441,7 @@ function showUserForm(userId = null) {
         showToast('success', 'User Updated', 'The user has been updated successfully.');
         usersCache = usersCache.map(user => {
           if (user.id === currentUserId) {
-            return { id: currentUserId, name, email, role };
+            return { id: currentUserId, name, email, role, courses: user.courses || [] };
           }
           return user;
         });
@@ -407,13 +456,15 @@ function showUserForm(userId = null) {
           name: name,
           email: email,
           role: role,
+          courses: [],
           createdAt: firebase.firestore.FieldValue.serverTimestamp()
         });
         usersCache.push({
           id: newUserRef.id,
           name: name,
           email: email,
-          role: role
+          role: role,
+          courses: []
         });
         showToast('success', 'User Created', 'The user has been created successfully.');
       }
@@ -441,6 +492,7 @@ function validateUsers() {
     if (!user.name) user.name = 'Unknown';
     if (!user.email) user.email = 'unknown@example.com';
     if (!user.role) user.role = 'graduate';
+    if (!user.courses) user.courses = [];
     if (!user.createdAt) user.createdAt = new Date().toISOString();
     return user;
   });
@@ -500,6 +552,7 @@ function displayUsersTable(users = usersCache) {
             <th style="text-align: left; padding: 0.75rem; font-weight: 600;">Name</th>
             <th style="text-align: left; padding: 0.75rem; font-weight: 600;">Email</th>
             <th style="text-align: left; padding: 0.75rem; font-weight: 600;">Role</th>
+            <th style="text-align: left; padding: 0.75rem; font-weight: 600;">Courses</th>
             <th style="text-align: left; padding: 0.75rem; font-weight: 600;">Created</th>
             <th style="text-align: left; padding: 0.75rem; font-weight: 600;">Actions</th>
           </tr>
@@ -513,6 +566,13 @@ function displayUsersTable(users = usersCache) {
                 <span class="badge" style="background-color: ${user.role === 'admin' ? 'var(--purple)' : 'var(--secondary-green)'}; color: white;">
                   ${user.role || 'Undefined'}
                 </span>
+              </td>
+              <td style="padding: 0.75rem;">
+                ${user.courses && user.courses.length > 0 ?
+                  user.courses.map(courseId => {
+                    const course = coursesCache.find(c => c.id === courseId);
+                    return course ? course.title : 'Unknown';
+                  }).join(', ') : 'None'}
               </td>
               <td style="padding: 0.75rem;">${user.createdAt ? new Date(user.createdAt.seconds * 1000).toLocaleDateString() : 'Undefined'}</td>
               <td style="padding: 0.75rem;">
@@ -531,7 +591,7 @@ function displayUsersTable(users = usersCache) {
   `;
 }
 
-// Función para mostrar tabla de cursos
+// Función para mostrar tabla de cursos (admin)
 function displayCoursesTable(courses = coursesCache) {
   const container = document.getElementById('courses-table-container');
   if (courses.length === 0) {
@@ -589,6 +649,35 @@ function displayCoursesTable(courses = coursesCache) {
       </table>
     </div>
   `;
+}
+
+// Función para mostrar cursos del usuario (NUEVA)
+async function displayUserCourses() {
+  const userCourses = await loadUserCourses();
+  const grid = document.getElementById('certificates-grid');
+
+  if (userCourses.length === 0) {
+    grid.innerHTML = `
+      <div style="grid-column: 1 / -1; text-align: center; padding: 3rem;">
+        <i class="fas fa-tag" style="font-size: 3rem; color: var(--neutral-400); margin-bottom: 1rem;"></i>
+        <h3 style="color: var(--neutral-800); margin-bottom: 0.5rem;">No courses assigned</h3>
+        <p style="color: var(--neutral-600);">Contact your administrator to get access to courses.</p>
+      </div>
+    `;
+    return;
+  }
+
+  const mockCertificates = userCourses.map(course => ({
+    id: course.id,
+    nombre: localStorage.getItem('userName') || 'User',
+    certificateId: `WS-2025-${course.id.toString().padStart(3, '0')}`,
+    completionDate: '2023-01-15',
+    course: course
+  }));
+
+  certificatesCache = mockCertificates;
+  grid.innerHTML = mockCertificates.map(cert => createCertificateCard(cert)).join('');
+  updateGraduateStats(mockCertificates);
 }
 
 // Función para cargar usuarios en el formulario de cursos
@@ -662,37 +751,14 @@ function closeCourseUsersModal(button) {
   if (modal) modal.remove();
 }
 
-// Función para migrar imágenes de blob a Base64
-async function migrateBlobImagesToBase64() {
-  for (const course of coursesCache) {
-    if (course.image && course.image.startsWith('blob:')) {
-      try {
-        const response = await fetch(course.image);
-        const blob = await response.blob();
-        const reader = new FileReader();
-        const base64 = await new Promise((resolve) => {
-          reader.onload = () => resolve(reader.result);
-          reader.readAsDataURL(blob);
-        });
-        course.image = base64;
-      } catch (error) {
-        console.error(`Error migrando imagen del curso ${course.id}:`, error);
-        course.image = defaultImageBase64;
-      }
-    }
-  }
-   loadCoursesFromFirestore();
-}
-
 // Imagen por defecto en Base64
 const defaultImageBase64 = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1MCIgaGVpZ2h0PSI1MCIgdmlld0JveD0iMCAwIDUwIDUwIiBmaWxsPSJub25lIiBzdHJva2U9IiNjY2MiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cmVjdCB3aWR0aD0iNTAiIGhlaWdodD0iNTAiIGZpbGw9IiNmZmYiLz48Y2lyY2xlIGN4PSIyNSIgY3k9IjI1IiByPSIyMCIvPjx0ZXh0IHRleHQtYW5jaG9yPSJtaWRkbGUiIHg9IjI1IiB5PSIyNSIgZmlsbD0iI2RlZCI+Qy9zdGFnZTwvdGV4dD48L3N2Zz4=";
 
 // Función para mostrar tabla de certificados (admin)
 function displayAdminCertificatesTable(certificates = certificatesCache) {
   const container = document.getElementById('certificates-table-container');
-  const validCertificates = certificates.filter(cert =>
-    cert && cert.id && cert.course && cert.nombre
-  );
+  const validCertificates = certificates.filter(cert => cert && cert.id && cert.course && cert.nombre);
+
   if (validCertificates.length === 0) {
     container.innerHTML = `
       <div class="text-center" style="padding: 2rem;">
@@ -701,6 +767,7 @@ function displayAdminCertificatesTable(certificates = certificatesCache) {
     `;
     return;
   }
+
   container.innerHTML = `
     <div style="overflow-x: auto;">
       <table style="width: 100%; border-collapse: collapse;">
@@ -723,7 +790,7 @@ function displayAdminCertificatesTable(certificates = certificatesCache) {
                 <td style="padding: 0.75rem;">${courseTitle}</td>
                 <td style="padding: 0.75rem;">${currentDate}</td>
                 <td style="padding: 0.75rem;">
-                  <button class="btn btn-outline" style="padding: 0.25rem 0.5rem;" onclick="downloadCertificate(${cert.id})">
+                  <button class="btn btn-outline" style="padding: 0.25rem 0.5rem;" onclick="downloadCertificate('${cert.id}')">
                     <i class="fas fa-download"></i>
                   </button>
                 </td>
@@ -911,37 +978,10 @@ function loadViewData(viewName) {
 }
 
 // Función para cargar datos de graduado
-function loadGraduateData() {
+async function loadGraduateData() {
   showLoading();
-  setTimeout(() => {
-    const mockCertificates = coursesCache.map(course => ({
-      id: course.id,
-      nombre: 'John Doe',
-      certificateId: `WS-2025-${course.id.toString().padStart(3, '0')}`,
-      completionDate: '2023-01-15',
-      course: course
-    }));
-    certificatesCache = mockCertificates;
-    displayCertificates(mockCertificates);
-    updateGraduateStats(mockCertificates);
-    hideLoading();
-  }, 500);
-}
-
-// Función para mostrar certificados
-function displayCertificates(certificates = certificatesCache) {
-  const grid = document.getElementById('certificates-grid');
-  if (!certificates || certificates.length === 0) {
-    grid.innerHTML = `
-      <div style="grid-column: 1 / -1; text-align: center; padding: 3rem;">
-        <i class="fas fa-tag" style="font-size: 3rem; color: var(--neutral-400); margin-bottom: 1rem;"></i>
-        <h3 style="color: var(--neutral-800); margin-bottom: 0.5rem;">No certificates yet</h3>
-        <p style="color: var(--neutral-600);">Complete a course to earn your first certificate!</p>
-      </div>
-    `;
-    return;
-  }
-  grid.innerHTML = certificates.map(cert => createCertificateCard(cert)).join('');
+  await displayUserCourses();
+  hideLoading();
 }
 
 // Función para crear tarjeta de certificado
@@ -949,6 +989,7 @@ function createCertificateCard(certificate) {
   const completionDate = new Date(certificate.completionDate).toLocaleDateString();
   const courseThumbnail = certificate.course?.image;
   const linkedInUrl = `https://www.linkedin.com/profile/add?startTask=CERTIFICATION_NAME&name=${encodeURIComponent(certificate.course.title)}&organizationId=13993759&issueYear=2025&issueMonth=6&certUrl=https://l3v145431.github.io/Verificate.github.io/&certificateUrl=${encodeURIComponent(window.location.href)}&certificateId=${encodeURIComponent(certificate.id)}`;
+
   return `
     <div class="certificate-card">
       ${courseThumbnail ? `
@@ -968,7 +1009,7 @@ function createCertificateCard(certificate) {
           <span>${certificate.course.duration} hours</span>
         </div>
         <div class="certificate-actions">
-          <button class="btn btn-primary" onclick="downloadCertificate(${certificate.id})">
+          <button class="btn btn-primary" onclick="downloadCertificate('${certificate.id}')">
             <i class="fas fa-download"></i> Download PDF
           </button>
           <a href="${linkedInUrl}" target="_blank" class="btn btn-linkedin">
@@ -1485,6 +1526,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       const duration = parseInt(document.getElementById('course-duration').value);
       const checkboxes = document.querySelectorAll('#course-users-checkboxes input[type="checkbox"]:checked');
       const selectedUsers = Array.from(checkboxes).map(checkbox => checkbox.value);
+
       const imageInput = document.getElementById('course-image');
       let imageBase64 = '';
       if (imageInput.files.length > 0) {
@@ -1496,8 +1538,10 @@ document.addEventListener('DOMContentLoaded', async function() {
           imageBase64 = course.image || '';
         }
       }
+
       try {
         showLoading();
+
         if (currentCourseId) {
           // Editar curso existente en Firestore
           await dbUsers.collection('courses').doc(currentCourseId.toString()).update({
@@ -1508,6 +1552,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             users: selectedUsers,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
           });
+
           // Actualizar coursesCache
           coursesCache = coursesCache.map(c => {
             if (c.id === currentCourseId) {
@@ -1522,10 +1567,45 @@ document.addEventListener('DOMContentLoaded', async function() {
             }
             return c;
           });
+
+          // Actualizar los usuarios asignados al curso
+          const previousCourse = coursesCache.find(c => c.id === currentCourseId);
+          const previousUsers = previousCourse ? previousCourse.users || [] : [];
+
+          // Quitar curso de usuarios deseleccionados
+          for (const userId of previousUsers) {
+            if (!selectedUsers.includes(userId)) {
+              const user = usersCache.find(u => u.id === userId);
+              if (user) {
+                const updatedCourses = (user.courses || []).filter(id => id !== currentCourseId);
+                await dbUsers.collection('users').doc(userId).update({ courses: updatedCourses });
+                // Actualizar caché local
+                const userIndex = usersCache.findIndex(u => u.id === userId);
+                if (userIndex !== -1) usersCache[userIndex].courses = updatedCourses;
+              }
+            }
+          }
+
+          // Añadir curso a usuarios seleccionados
+          for (const userId of selectedUsers) {
+            const user = usersCache.find(u => u.id === userId);
+            if (user) {
+              const updatedCourses = user.courses ? [...user.courses] : [];
+              if (!updatedCourses.includes(currentCourseId)) {
+                updatedCourses.push(currentCourseId);
+                await dbUsers.collection('users').doc(userId).update({ courses: updatedCourses });
+                // Actualizar caché local
+                const userIndex = usersCache.findIndex(u => u.id === userId);
+                if (userIndex !== -1) usersCache[userIndex].courses = updatedCourses;
+              }
+            }
+          }
+
         } else {
           // Crear nuevo curso en Firestore
           const newCourseRef = dbUsers.collection('courses').doc();
           const newCourseId = newCourseRef.id;
+
           await newCourseRef.set({
             title: title,
             description: description,
@@ -1535,6 +1615,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
           });
+
           // Añadir el nuevo curso a coursesCache
           coursesCache.push({
             id: newCourseId,
@@ -1544,14 +1625,32 @@ document.addEventListener('DOMContentLoaded', async function() {
             image: imageBase64,
             users: selectedUsers
           });
+
+          // Asignar el curso a los usuarios seleccionados
+          for (const userId of selectedUsers) {
+            const user = usersCache.find(u => u.id === userId);
+            if (user) {
+              const updatedCourses = user.courses ? [...user.courses, newCourseId] : [newCourseId];
+              await dbUsers.collection('users').doc(userId).update({ courses: updatedCourses });
+              // Actualizar caché local
+              const userIndex = usersCache.findIndex(u => u.id === userId);
+              if (userIndex !== -1) usersCache[userIndex].courses = updatedCourses;
+            }
+          }
         }
+
         // Guardar en localStorage
         localStorage.setItem('coursesCache', JSON.stringify(coursesCache));
+        localStorage.setItem('usersCache', JSON.stringify(usersCache));
+
         // Actualizar la tabla de cursos
         displayCoursesTable();
+        displayUsersTable();
+
         // Ocultar el formulario
         document.getElementById('course-form-container').classList.add('hidden');
         showToast('success', 'Course Saved', 'The course has been saved successfully.');
+
       } catch (error) {
         console.error("Error saving course:", error);
         showToast('error', 'Error', 'Failed to save course. Check console for details.');

@@ -348,35 +348,52 @@ function editCourse(courseId) {
 async function saveCourseAssignments(courseId, selectedUserIds) {
   try {
     showLoading();
-
-    // Obtener la referencia del curso en Firestore
     const courseRef = dbUsers.collection('courses').doc(courseId);
-
-    // Obtener los usuarios actualmente asignados al curso
     const courseDoc = await courseRef.get();
     const currentUsers = courseDoc.exists ? courseDoc.data().users || [] : [];
-
-    // Identificar usuarios que deben ser agregados o removidos
     const usersToAdd = selectedUserIds.filter(userId => !currentUsers.includes(userId));
     const usersToRemove = currentUsers.filter(userId => !selectedUserIds.includes(userId));
 
-    // Actualizar la lista de usuarios en el curso
     await courseRef.update({
       users: selectedUserIds,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
 
-    // Actualizar la lista de cursos para cada usuario
     for (const userId of usersToAdd) {
       const userRef = dbUsers.collection('users').doc(userId);
+      const userDoc = await userRef.get();
+
+      if (!userDoc.exists) {
+        console.error(`User document with ID ${userId} does not exist.`);
+        continue;
+      }
+
       await userRef.update({
         courses: firebase.firestore.FieldValue.arrayUnion(courseId),
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       });
+
+      // Generar certificado automáticamente
+      const user = usersCache.find(u => u.id === userId);
+      if (user) {
+        const course = coursesCache.find(c => c.id === courseId);
+        if (course) {
+          const certificateId = generateUniqueId();
+          const hashHex = await generateHash(certificateId);
+          await saveCertificateToFirestore(certificateId, user.name, course.title, new Date().toISOString(), hashHex);
+        }
+      }
     }
 
     for (const userId of usersToRemove) {
       const userRef = dbUsers.collection('users').doc(userId);
+      const userDoc = await userRef.get();
+
+      if (!userDoc.exists) {
+        console.error(`User document with ID ${userId} does not exist.`);
+        continue;
+      }
+
       await userRef.update({
         courses: firebase.firestore.FieldValue.arrayRemove(courseId),
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -404,10 +421,8 @@ async function saveCourseAssignments(courseId, selectedUserIds) {
       }
     }
 
-    // Guardar en localStorage
     localStorage.setItem('coursesCache', JSON.stringify(coursesCache));
     localStorage.setItem('usersCache', JSON.stringify(usersCache));
-
     showToast('success', 'Course Updated', 'The course assignments have been updated successfully.');
   } catch (error) {
     console.error("Error updating course assignments:", error);
@@ -416,7 +431,6 @@ async function saveCourseAssignments(courseId, selectedUserIds) {
     hideLoading();
   }
 }
-
 document.getElementById('course-form').addEventListener('submit', async function(e) {
   e.preventDefault();
 
@@ -839,7 +853,6 @@ async function displayUserCourses() {
   updateGraduateStats(mockCertificates);
 }
 
-// Función para cargar usuarios en el formulario de cursos
 function loadUsersIntoCourseForm() {
   const container = document.getElementById('course-users-checkboxes');
   container.innerHTML = '';

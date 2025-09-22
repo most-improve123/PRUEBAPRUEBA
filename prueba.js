@@ -317,6 +317,137 @@ function editCourse(courseId) {
     document.getElementById('course-form-container').classList.remove('hidden');
   }
 }
+async function saveCourseAssignments(courseId, selectedUserIds) {
+  try {
+    showLoading();
+
+    // Obtener la referencia del curso en Firestore
+    const courseRef = dbUsers.collection('courses').doc(courseId);
+
+    // Obtener los usuarios actualmente asignados al curso
+    const courseDoc = await courseRef.get();
+    const currentUsers = courseDoc.exists ? courseDoc.data().users || [] : [];
+
+    // Identificar usuarios que deben ser agregados o removidos
+    const usersToAdd = selectedUserIds.filter(userId => !currentUsers.includes(userId));
+    const usersToRemove = currentUsers.filter(userId => !selectedUserIds.includes(userId));
+
+    // Actualizar la lista de usuarios en el curso
+    await courseRef.update({
+      users: selectedUserIds,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    // Actualizar la lista de cursos para cada usuario
+    for (const userId of usersToAdd) {
+      const userRef = dbUsers.collection('users').doc(userId);
+      await userRef.update({
+        courses: firebase.firestore.FieldValue.arrayUnion(courseId),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    }
+
+    for (const userId of usersToRemove) {
+      const userRef = dbUsers.collection('users').doc(userId);
+      await userRef.update({
+        courses: firebase.firestore.FieldValue.arrayRemove(courseId),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    }
+
+    // Actualizar la caché local
+    const updatedCourseIndex = coursesCache.findIndex(course => course.id === courseId);
+    if (updatedCourseIndex !== -1) {
+      coursesCache[updatedCourseIndex].users = selectedUserIds;
+    }
+
+    // Actualizar la caché de usuarios
+    for (const userId of usersToAdd) {
+      const userIndex = usersCache.findIndex(user => user.id === userId);
+      if (userIndex !== -1) {
+        usersCache[userIndex].courses = [...(usersCache[userIndex].courses || []), courseId];
+      }
+    }
+
+    for (const userId of usersToRemove) {
+      const userIndex = usersCache.findIndex(user => user.id === userId);
+      if (userIndex !== -1) {
+        usersCache[userIndex].courses = (usersCache[userIndex].courses || []).filter(id => id !== courseId);
+      }
+    }
+
+    // Guardar en localStorage
+    localStorage.setItem('coursesCache', JSON.stringify(coursesCache));
+    localStorage.setItem('usersCache', JSON.stringify(usersCache));
+
+    showToast('success', 'Course Updated', 'The course assignments have been updated successfully.');
+  } catch (error) {
+    console.error("Error updating course assignments:", error);
+    showToast('error', 'Error', 'Failed to update course assignments. Check console for details.');
+  } finally {
+    hideLoading();
+  }
+}
+
+document.getElementById('course-form').addEventListener('submit', async function(e) {
+  e.preventDefault();
+
+  const title = document.getElementById('course-title').value;
+  const description = document.getElementById('course-description').value;
+  const duration = parseInt(document.getElementById('course-duration').value);
+  const checkboxes = document.querySelectorAll('#course-users-checkboxes input[type="checkbox"]:checked');
+  const selectedUserIds = Array.from(checkboxes).map(checkbox => checkbox.value);
+
+  try {
+    showLoading();
+
+    if (currentCourseId) {
+      // Editar curso existente
+      await dbUsers.collection('courses').doc(currentCourseId.toString()).update({
+        title: title,
+        description: description,
+        duration: duration,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+
+      // Actualizar asignaciones de usuarios
+      await saveCourseAssignments(currentCourseId, selectedUserIds);
+    } else {
+      // Crear nuevo curso
+      const newCourseRef = dbUsers.collection('courses').doc();
+      const newCourseId = newCourseRef.id;
+
+      await newCourseRef.set({
+        title: title,
+        description: description,
+        duration: duration,
+        users: selectedUserIds,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+
+      // Actualizar asignaciones de usuarios
+      await saveCourseAssignments(newCourseId, selectedUserIds);
+    }
+
+    // Actualizar la caché local y la tabla de cursos
+    await loadCoursesFromFirestore();
+    displayCoursesTable();
+    displayUsersTable();
+
+    // Ocultar el formulario
+    document.getElementById('course-form-container').classList.add('hidden');
+  } catch (error) {
+    console.error("Error saving course:", error);
+    showToast('error', 'Error', 'Failed to save course. Check console for details.');
+  } finally {
+    hideLoading();
+  }
+});
+
+
+
+
 
 // Función para eliminar curso
 async function deleteCourse(courseId) {

@@ -16,6 +16,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    
     <script>
         // Configuración de Firebase para Auth y Users
         const firebaseConfigAuth = {
@@ -361,40 +362,46 @@
                 </div>
                 <!-- Import Tab -->
                 <div id="import-tab" class="tab-content">
-                    <div class="import-container">
-                        <div class="card">
-                            <div class="card-header">
-                                <h3>Import CSV Data</h3>
-                            </div>
-                            <div class="card-content">
-                                <!-- Añade un selector para elegir qué importar -->
-                                <div style="margin-bottom: 1rem;">
-                                    <label style="margin-right: 1rem;">
-                                        <input type="radio" name="import-type" value="students" checked> Students
-                                    </label>
-                                    <label>
-                                        <input type="radio" name="import-type" value="certificates"> Certificates
-                                    </label>
-                                </div>
-                                <div class="file-upload-area" id="file-upload-area">
-                                    <i class="fas fa-cloud-upload-alt"></i>
-                                    <h4>Drag and drop your CSV file here</h4>
-                                    <p>or click to browse files</p>
-                                    <input type="file" id="csv-file" accept=".csv" hidden>
-                                </div>
-                                <div id="file-info" class="file-info hidden">
-                                    <i class="fas fa-file-csv"></i>
-                                    <span id="file-name"></span>
-                                    <button onclick="clearFile()"><i class="fas fa-times"></i></button>
-                                </div>
-                                <button class="btn btn-primary" id="import-btn" disabled onclick="importCsv()">Import Data</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+    <div class="import-container">
+        <div class="card">
+            <div class="card-header">
+                <h3>Import CSV Data</h3>
             </div>
-        </main>
+            <div class="card-content">
+                <!-- Selector para elegir qué importar -->
+                <div style="margin-bottom: 1rem;">
+                    <label style="margin-right: 1rem;">
+                        <input type="radio" name="import-type" value="students" checked> Students
+                    </label>
+                    <label>
+                        <input type="radio" name="import-type" value="certificates"> Certificates
+                    </label>
+                </div>
+
+                <!-- Botón para descargar la plantilla -->
+                <button class="btn btn-outline" onclick="downloadTemplate()" style="margin-bottom: 1rem;">
+                    <i class="fas fa-file-download"></i> Download Template
+                </button>
+
+                <!-- Área de carga de archivos -->
+                <div class="file-upload-area" id="file-upload-area">
+                    <i class="fas fa-cloud-upload-alt"></i>
+                    <h4>Drag and drop your CSV file here</h4>
+                    <p>or click to browse files</p>
+                    <input type="file" id="csv-file" accept=".csv" hidden>
+                </div>
+                <!-- Resto del contenido -->
+                <div id="file-info" class="file-info hidden">
+                    <i class="fas fa-file-csv"></i>
+                    <span id="file-name"></span>
+                    <button onclick="clearFile()"><i class="fas fa-times"></i></button>
+                </div>
+                <button class="btn btn-primary" id="import-btn" disabled onclick="importCsv()">Import Data</button>
+            </div>
+        </div>
     </div>
+</div>
+
     <!-- Mobile Navigation -->
     <div class="mobile-nav">
         <button class="mobile-nav-btn active" data-view="graduate">

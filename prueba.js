@@ -238,6 +238,34 @@ async function downloadCertificate(certificateId) {
   }
 }
 
+function downloadTemplate() {
+  const importType = document.querySelector('input[name="import-type"]:checked').value;
+  let csvContent;
+  let fileName;
+
+  if (importType === 'students') {
+    csvContent = "nombre,email,curso\nJuan Pérez,juan.perez@example.com,Introducción a la Programación\nMaría Gómez,maria.gomez@example.com,Introducción a la Programación";
+    fileName = "template_users.csv";
+  } else {
+    csvContent = "nombre,email,curso,fecha\nJuan Pérez,juan.perez@example.com,Introducción a la Programación,2025-09-22\nMaría Gómez,maria.gomez@example.com,Introducción a la Programación,2025-09-22";
+    fileName = "template_certificates.csv";
+  }
+
+  // Crear un blob con el contenido CSV
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+
+  // Crear un enlace para descargar el archivo
+  const link = document.createElement("a");
+  const url = URL.createObjectURL(blob);
+  link.setAttribute("href", url);
+  link.setAttribute("download", fileName);
+  link.style.visibility = 'hidden';
+
+  // Agregar el enlace al DOM y simular un clic para descargar
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
 
 
 function displayCertificates(certificates = certificatesCache) {

@@ -1511,6 +1511,7 @@ async function importStudents(studentsData) {
   const defaultDate = new Date().toISOString().split('T')[0];
   let successCount = 0;
   let errorCount = 0;
+
   for (const row of studentsData) {
     try {
       const { nombre, email, curso: courseName } = row;
@@ -1519,16 +1520,19 @@ async function importStudents(studentsData) {
         errorCount++;
         continue;
       }
+
       const course = coursesCache.find(c => c.title.toLowerCase() === courseName.toLowerCase());
       if (!course) {
         console.warn(`Curso no encontrado: ${courseName}. Se omitirá.`);
         errorCount++;
         continue;
       }
+
       const usersRef = dbUsers.collection('users');
       const query = usersRef.where('email', '==', email);
       const snapshot = await query.get();
       let userId;
+
       if (!snapshot.empty) {
         userId = snapshot.docs[0].id;
         const userData = snapshot.docs[0].data();
@@ -1561,6 +1565,21 @@ async function importStudents(studentsData) {
         await sendBrevoMagicLinkEmail(email, magicLink);
         console.log(`Nuevo estudiante creado: ${email} con curso "${courseName}"`);
       }
+
+      // Asegúrate de que el curso tenga al usuario en su lista de usuarios
+      const courseRef = dbUsers.collection('courses').doc(course.id);
+      const courseDoc = await courseRef.get();
+      const courseData = courseDoc.data();
+      const courseUsers = courseData.users || [];
+
+      if (!courseUsers.includes(userId)) {
+        courseUsers.push(userId);
+        await courseRef.update({
+          users: courseUsers,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      }
+
       const certificateId = generateUniqueId();
       const hashHex = await generateHash(certificateId);
       const pdfBlob = await generarPDFIndividual(nombre, courseName, defaultDate, certificateId, hashHex);
@@ -1571,6 +1590,7 @@ async function importStudents(studentsData) {
       errorCount++;
     }
   }
+
   if (successCount > 0) {
     const zipBlob = await zip.generateAsync({ type: 'blob' });
     const zipUrl = URL.createObjectURL(zipBlob);
@@ -1581,11 +1601,16 @@ async function importStudents(studentsData) {
     a.click();
     document.body.removeChild(a);
   }
+
   showToast(
     successCount > 0 ? 'success' : 'error',
     'Import Results',
     `Success: ${successCount} | Errors: ${errorCount}`
   );
+
+  // Actualizar la caché local
+  await loadUsers();
+  await loadCoursesFromFirestore();
 }
 
 // Función para mostrar loading

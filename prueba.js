@@ -27,6 +27,55 @@ function logout() {
   });
 }
 
+// Función para mostrar el modal con los detalles del certificado
+function showCertificateDetails(certificateId) {
+  const cert = certificatesCache.find(c => c.id === certificateId);
+  if (!cert) {
+    showToast('error', 'Certificate Not Found', 'The certificate details could not be loaded.');
+    return;
+  }
+
+  const modal = document.getElementById('certificate-details-modal');
+  const content = document.getElementById('certificate-details-content');
+
+  // Llenar el contenido del modal con los detalles del certificado
+  content.innerHTML = `
+    <div class="detail-row">
+      <span class="detail-label">Certificate ID:</span>
+      <span class="detail-value">${cert.id || 'N/A'}</span>
+    </div>
+    <div class="detail-row">
+      <span class="detail-label">Student Name:</span>
+      <span class="detail-value">${cert.nombre || 'N/A'}</span>
+    </div>
+    <div class="detail-row">
+      <span class="detail-label">Course:</span>
+      <span class="detail-value">${cert.curso || 'N/A'}</span>
+    </div>
+    <div class="detail-row">
+      <span class="detail-label">Issue Date:</span>
+      <span class="detail-value">${cert.fecha || 'N/A'}</span>
+    </div>
+    <div class="detail-row">
+      <span class="detail-label">Status:</span>
+      <span class="detail-value" style="color: var(--secondary-green);">valid</span>
+    </div>
+    <div class="detail-row">
+      <span class="detail-label">Hash:</span>
+      <span class="detail-value">${cert.hash || 'N/A'}</span>
+    </div>
+  `;
+
+  // Mostrar el modal
+  modal.classList.remove('hidden');
+}
+
+// Función para cerrar el modal de detalles del certificado
+function closeCertificateDetailsModal() {
+  const modal = document.getElementById('certificate-details-modal');
+  modal.classList.add('hidden');
+}
+
 // Función para cargar usuarios desde Firestore
 async function loadUsers() {
   try {
@@ -63,18 +112,30 @@ async function loadCoursesFromFirestore() {
   }
 }
 
+// Función para cargar certificados desde Firestore
+async function loadCertificatesFromFirestore() {
+  try {
+    const certificatesSnapshot = await dbCertificates.collection('certificates').get();
+    certificatesCache = certificatesSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    displayAdminCertificatesTable(certificatesCache);
+  } catch (error) {
+    console.error("Error al cargar certificados:", error);
+    showToast('error', 'Error', 'No se pudieron cargar los certificados.');
+  }
+}
+
 // Función para cargar cursos del usuario actual
 async function loadUserCourses() {
   try {
     const userUID = localStorage.getItem('userUID');
     if (!userUID) return [];
-
     const user = usersCache.find(u => u.id === userUID);
     if (!user) return [];
-
     // Si el usuario no tiene cursos asignados, devolver array vacío
     if (!user.courses || user.courses.length === 0) return [];
-
     // Filtrar solo los cursos asignados al usuario
     return coursesCache.filter(course => user.courses.includes(course.id));
   } catch (error) {
@@ -82,6 +143,7 @@ async function loadUserCourses() {
     return [];
   }
 }
+
 // Función para generar un ID único
 function generateUniqueId() {
   return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
@@ -97,7 +159,6 @@ async function generateHash(input) {
   return hashHex;
 }
 
-
 // Función para guardar información del certificado en Firestore
 async function saveCertificateToFirestore(id, nombre, curso, fecha, hashHex) {
   try {
@@ -108,6 +169,7 @@ async function saveCertificateToFirestore(id, nombre, curso, fecha, hashHex) {
       curso: curso,
       fecha: fechaActual,
       hash: hashHex,
+      status: 'valid',
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     });
     console.log("Certificado guardado con éxito en Firestore");
@@ -132,7 +194,6 @@ async function generarPDFIndividual(nombre, curso, fecha, id, hashHex) {
   const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'A4' });
   const robotoRegularUrl = 'https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-regular-webfont.ttf';
   const robotoBoldUrl = 'https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-bold-webfont.ttf';
-
   const loadAndRegisterFont = async (url, fontName, fontStyle) => {
     const response = await fetch(url);
     const fontData = await response.arrayBuffer();
@@ -145,7 +206,6 @@ async function generarPDFIndividual(nombre, curso, fecha, id, hashHex) {
     doc.addFileToVFS(`${fontName}.ttf`, base64Font);
     doc.addFont(`${fontName}.ttf`, fontName, fontStyle);
   };
-
   const loadImage = (src) => {
     return new Promise((resolve, reject) => {
       const img = new Image();
@@ -155,7 +215,6 @@ async function generarPDFIndividual(nombre, curso, fecha, id, hashHex) {
       img.src = src;
     });
   };
-
   try {
     await loadAndRegisterFont(robotoRegularUrl, 'Roboto', 'normal');
     await loadAndRegisterFont(robotoBoldUrl, 'Roboto', 'bold');
@@ -163,7 +222,6 @@ async function generarPDFIndividual(nombre, curso, fecha, id, hashHex) {
     const fondo = await loadImage(fondoURL);
     const qrUrl = generateQRCodeLink(id);
     const qrImage = await loadImage(qrUrl);
-
     doc.addImage(fondo, 'JPEG', 0, 0, 850, 595);
     doc.setFont('Roboto', 'bold');
     doc.setFontSize(37);
@@ -181,13 +239,11 @@ async function generarPDFIndividual(nombre, curso, fecha, id, hashHex) {
     const text1 = "skills for real-world impact. This certificate celebrates your participation in our interactive, innovation-focused";
     doc.text(doc.splitTextToSize(text1, 700), 80, 270);
     doc.text("training. Now go out there and release your inner genius!", 260, 290);
-
     const fechaActual = new Date();
     const dia = String(fechaActual.getDate()).padStart(2, '0');
     const mes = String(fechaActual.getMonth() + 1).padStart(2, '0');
     const anio = fechaActual.getFullYear();
     const fechaFormateada = `${dia}.${mes}.${anio}`;
-
     doc.setFont('Roboto', 'bold');
     doc.setFontSize(13);
     doc.setTextColor(255, 255, 255);
@@ -198,7 +254,6 @@ async function generarPDFIndividual(nombre, curso, fecha, id, hashHex) {
     doc.text(`ID: ${id}`, 4, 15);
     doc.text(`Hash: ${hashHex}`, 263, 585);
     doc.addImage(qrImage, 'PNG', 124, 460, 100, 100);
-
     return doc.output('blob');
   } catch (error) {
     console.error("Error al generar PDF:", error);
@@ -213,13 +268,10 @@ async function downloadCertificate(certificateId) {
   try {
     const certificate = certificatesCache.find(cert => cert.id == certificateId);
     if (!certificate) throw new Error('Certificate not found');
-
     const id = generateUniqueId();
     const hashHex = await generateHash(id);
     const userName = localStorage.getItem('userName') || certificate.nombre;
-
     await saveCertificateToFirestore(id, userName, certificate.course.title, certificate.completionDate, hashHex);
-
     const baseUrl = 'https://wespark-download.onrender.com/download.html';
     const params = new URLSearchParams();
     params.append('id', id);
@@ -227,7 +279,6 @@ async function downloadCertificate(certificateId) {
     params.append('curso', certificate.course.title);
     params.append('fecha', certificate.completionDate);
     params.append('hashHex', hashHex);
-
     const downloadUrl = `${baseUrl}?${params.toString()}`;
     window.open(downloadUrl, '_blank');
   } catch (error) {
@@ -242,7 +293,6 @@ function downloadTemplate() {
   const importType = document.querySelector('input[name="import-type"]:checked').value;
   let csvContent;
   let fileName;
-
   if (importType === 'students') {
     csvContent = "nombre,email,curso\nJuan Pérez,juan.perez@example.com,Introducción a la Programación\nMaría Gómez,maria.gomez@example.com,Introducción a la Programación";
     fileName = "template_users.csv";
@@ -250,23 +300,19 @@ function downloadTemplate() {
     csvContent = "nombre,email,curso,fecha\nJuan Pérez,juan.perez@example.com,Introducción a la Programación,2025-09-22\nMaría Gómez,maria.gomez@example.com,Introducción a la Programación,2025-09-22";
     fileName = "template_certificates.csv";
   }
-
   // Crear un blob con el contenido CSV
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-
   // Crear un enlace para descargar el archivo
   const link = document.createElement("a");
   const url = URL.createObjectURL(blob);
   link.setAttribute("href", url);
   link.setAttribute("download", fileName);
   link.style.visibility = 'hidden';
-
   // Agregar el enlace al DOM y simular un clic para descargar
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
 }
-
 
 function displayCertificates(certificates = certificatesCache) {
   const grid = document.getElementById('certificates-grid');
@@ -345,6 +391,7 @@ function editCourse(courseId) {
     document.getElementById('course-form-container').classList.remove('hidden');
   }
 }
+
 async function saveCourseAssignments(courseId, selectedUserIds) {
   try {
     showLoading();
@@ -353,26 +400,21 @@ async function saveCourseAssignments(courseId, selectedUserIds) {
     const currentUsers = courseDoc.exists ? courseDoc.data().users || [] : [];
     const usersToAdd = selectedUserIds.filter(userId => !currentUsers.includes(userId));
     const usersToRemove = currentUsers.filter(userId => !selectedUserIds.includes(userId));
-
     await courseRef.update({
       users: selectedUserIds,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
-
     for (const userId of usersToAdd) {
       const userRef = dbUsers.collection('users').doc(userId);
       const userDoc = await userRef.get();
-
       if (!userDoc.exists) {
         console.error(`User document with ID ${userId} does not exist.`);
         continue;
       }
-
       await userRef.update({
         courses: firebase.firestore.FieldValue.arrayUnion(courseId),
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       });
-
       // Generar certificado automáticamente
       const user = usersCache.find(u => u.id === userId);
       if (user) {
@@ -384,28 +426,23 @@ async function saveCourseAssignments(courseId, selectedUserIds) {
         }
       }
     }
-
     for (const userId of usersToRemove) {
       const userRef = dbUsers.collection('users').doc(userId);
       const userDoc = await userRef.get();
-
       if (!userDoc.exists) {
         console.error(`User document with ID ${userId} does not exist.`);
         continue;
       }
-
       await userRef.update({
         courses: firebase.firestore.FieldValue.arrayRemove(courseId),
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       });
     }
-
     // Actualizar la caché local
     const updatedCourseIndex = coursesCache.findIndex(course => course.id === courseId);
     if (updatedCourseIndex !== -1) {
       coursesCache[updatedCourseIndex].users = selectedUserIds;
     }
-
     // Actualizar la caché de usuarios
     for (const userId of usersToAdd) {
       const userIndex = usersCache.findIndex(user => user.id === userId);
@@ -413,14 +450,12 @@ async function saveCourseAssignments(courseId, selectedUserIds) {
         usersCache[userIndex].courses = [...(usersCache[userIndex].courses || []), courseId];
       }
     }
-
     for (const userId of usersToRemove) {
       const userIndex = usersCache.findIndex(user => user.id === userId);
       if (userIndex !== -1) {
         usersCache[userIndex].courses = (usersCache[userIndex].courses || []).filter(id => id !== courseId);
       }
     }
-
     localStorage.setItem('coursesCache', JSON.stringify(coursesCache));
     localStorage.setItem('usersCache', JSON.stringify(usersCache));
     showToast('success', 'Course Updated', 'The course assignments have been updated successfully.');
@@ -431,34 +466,30 @@ async function saveCourseAssignments(courseId, selectedUserIds) {
     hideLoading();
   }
 }
+
 document.getElementById('course-form').addEventListener('submit', async function(e) {
   e.preventDefault();
-
   const title = document.getElementById('course-title').value;
   const description = document.getElementById('course-description').value;
   const duration = parseInt(document.getElementById('course-duration').value);
   const checkboxes = document.querySelectorAll('#course-users-checkboxes input[type="checkbox"]:checked');
   const selectedUserIds = Array.from(checkboxes).map(checkbox => checkbox.value);
-
   try {
     showLoading();
-
     if (currentCourseId) {
-      // Editar curso existente
+      // Editar curso existente en Firestore
       await dbUsers.collection('courses').doc(currentCourseId.toString()).update({
         title: title,
         description: description,
         duration: duration,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       });
-
       // Actualizar asignaciones de usuarios
       await saveCourseAssignments(currentCourseId, selectedUserIds);
     } else {
       // Crear nuevo curso
       const newCourseRef = dbUsers.collection('courses').doc();
       const newCourseId = newCourseRef.id;
-
       await newCourseRef.set({
         title: title,
         description: description,
@@ -467,16 +498,13 @@ document.getElementById('course-form').addEventListener('submit', async function
         createdAt: firebase.firestore.FieldValue.serverTimestamp(),
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       });
-
       // Actualizar asignaciones de usuarios
       await saveCourseAssignments(newCourseId, selectedUserIds);
     }
-
     // Actualizar la caché local y la tabla de cursos
     await loadCoursesFromFirestore();
     displayCoursesTable();
     displayUsersTable();
-
     // Ocultar el formulario
     document.getElementById('course-form-container').classList.add('hidden');
   } catch (error) {
@@ -487,10 +515,6 @@ document.getElementById('course-form').addEventListener('submit', async function
   }
 });
 
-
-
-
-
 // Función para eliminar curso
 async function deleteCourse(courseId) {
   const isConfirmed = confirm("Are you sure you want to delete this course? This action cannot be undone.");
@@ -498,7 +522,6 @@ async function deleteCourse(courseId) {
   try {
     showLoading();
     await dbUsers.collection('courses').doc(courseId.toString()).delete();
-
     // Eliminar el curso de los usuarios que lo tienen asignado
     for (const user of usersCache) {
       if (user.courses && user.courses.includes(courseId)) {
@@ -511,7 +534,6 @@ async function deleteCourse(courseId) {
         if (userIndex !== -1) usersCache[userIndex].courses = updatedCourses;
       }
     }
-
     coursesCache = coursesCache.filter(course => course.id !== courseId);
     localStorage.removeItem(`courseImage_${courseId}`);
     localStorage.setItem('coursesCache', JSON.stringify(coursesCache));
@@ -824,11 +846,10 @@ function displayCoursesTable(courses = coursesCache) {
   `;
 }
 
-// Función para mostrar cursos del usuario (NUEVA)
+// Función para mostrar cursos del usuario
 async function displayUserCourses() {
   const userCourses = await loadUserCourses();
   const grid = document.getElementById('certificates-grid');
-
   if (userCourses.length === 0) {
     grid.innerHTML = `
       <div style="grid-column: 1 / -1; text-align: center; padding: 3rem;">
@@ -839,7 +860,6 @@ async function displayUserCourses() {
     `;
     return;
   }
-
   const mockCertificates = userCourses.map(course => ({
     id: course.id,
     nombre: localStorage.getItem('userName') || 'User',
@@ -847,91 +867,15 @@ async function displayUserCourses() {
     completionDate: '2023-01-15',
     course: course
   }));
-
   certificatesCache = mockCertificates;
   grid.innerHTML = mockCertificates.map(cert => createCertificateCard(cert)).join('');
   updateGraduateStats(mockCertificates);
 }
 
-function loadUsersIntoCourseForm() {
-  const container = document.getElementById('course-users-checkboxes');
-  container.innerHTML = '';
-  usersCache.forEach(user => {
-    const checkboxItem = document.createElement('div');
-    checkboxItem.className = 'checkbox-item';
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.id = `user-${user.id}`;
-    checkbox.value = user.id;
-    const label = document.createElement('label');
-    label.htmlFor = `user-${user.id}`;
-    label.innerHTML = `
-      ${user.name} (${user.email})
-      <br>
-      <small style="color: var(--neutral-600);">
-        Cursos: ${user.courses?.map(cid => {
-          const course = coursesCache.find(c => c.id === cid);
-          return course ? course.title : 'Unknown';
-        }).join(', ') || 'None'}
-      </small>
-    `;
-    checkboxItem.appendChild(checkbox);
-    checkboxItem.appendChild(label);
-    container.appendChild(checkboxItem);
-  });
-  if (currentCourseId) {
-    const course = coursesCache.find(c => c.id === currentCourseId);
-    if (course?.users) {
-      course.users.forEach(userId => {
-        const checkbox = document.querySelector(`#user-${userId}`);
-        if (checkbox) checkbox.checked = true;
-      });
-    }
-  }
-}
-
-// Función para mostrar los usuarios del curso en un modal
-function showCourseUsers(courseId) {
-  const course = coursesCache.find(c => c.id === courseId);
-  if (!course) return;
-  if (!course.users || course.users.length === 0) {
-    showToast('warning', 'No Users', 'This course has no participants.');
-    return;
-  }
-  const modal = document.createElement('div');
-  modal.className = 'course-users-modal';
-  modal.innerHTML = `
-    <div class="course-users-modal-content">
-      <div class="course-users-modal-header">
-        <h3>Participants in ${course.title}</h3>
-        <button class="course-users-modal-close" onclick="closeCourseUsersModal(this)">&times;</button>
-      </div>
-      <ul class="course-users-list">
-        ${course.users.map(userId => {
-          const user = usersCache.find(u => u.id == userId);
-          return `<li>${user ? user.name : 'Unknown User'}</li>`;
-        }).join('')}
-      </ul>
-    </div>
-  `;
-  document.body.appendChild(modal);
-}
-
-// Función para cerrar el modal
-function closeCourseUsersModal(button) {
-  const modal = button.closest('.course-users-modal');
-  if (modal) modal.remove();
-}
-
-// Imagen por defecto en Base64
-const defaultImageBase64 = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1MCIgaGVpZ2h0PSI1MCIgdmlld0JveD0iMCAwIDUwIDUwIiBmaWxsPSJub25lIiBzdHJva2U9IiNjY2MiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cmVjdCB3aWR0aD0iNTAiIGhlaWdodD0iNTAiIGZpbGw9IiNmZmYiLz48Y2lyY2xlIGN4PSIyNSIgY3k9IjI1IiByPSIyMCIvPjx0ZXh0IHRleHQtYW5jaG9yPSJtaWRkbGUiIHg9IjI1IiB5PSIyNSIgZmlsbD0iI2RlZCI+Qy9zdGFnZTwvdGV4dD48L3N2Zz4=";
-
-// Función para mostrar tabla de certificados (admin)
+// Función para mostrar tabla de certificados (admin) - MODIFICADA
 function displayAdminCertificatesTable(certificates = certificatesCache) {
   const container = document.getElementById('certificates-table-container');
-  const validCertificates = certificates.filter(cert => cert && cert.id && cert.course && cert.nombre);
-
-  if (validCertificates.length === 0) {
+  if (!certificates || certificates.length === 0) {
     container.innerHTML = `
       <div class="text-center" style="padding: 2rem;">
         <p>No certificates found.</p>
@@ -947,28 +891,26 @@ function displayAdminCertificatesTable(certificates = certificatesCache) {
           <tr style="border-bottom: 1px solid var(--neutral-200);">
             <th style="text-align: left; padding: 0.75rem; font-weight: 600;">Certificate ID</th>
             <th style="text-align: left; padding: 0.75rem; font-weight: 600;">Course</th>
-            <th style="text-align: left; padding: 0.75rem; font-weight: 600;">Completion Date</th>
-            <th style="text-align: left; padding: 0.75rem; font-weight: 600;">Actions</th>
+            <th style="text-align: left; padding: 0.75rem; font-weight: 600;">Issue Date</th>
+            <th style="text-align: left; padding: 0.75rem; font-weight: 600;">Status</th>
           </tr>
         </thead>
         <tbody>
-          ${validCertificates.map(cert => {
-            const course = coursesCache.find(c => c.id === cert.course.id);
-            const courseTitle = course ? course.title : 'Unknown Course';
-            const currentDate = new Date().toLocaleDateString();
-            return `
-              <tr style="border-bottom: 1px solid var(--neutral-200);">
-                <td style="padding: 0.75rem; font-family: monospace; font-weight: 600;">WS-${cert.id}</td>
-                <td style="padding: 0.75rem;">${courseTitle}</td>
-                <td style="padding: 0.75rem;">${currentDate}</td>
-                <td style="padding: 0.75rem;">
-                  <button class="btn btn-outline" style="padding: 0.25rem 0.5rem;" onclick="downloadCertificate('${cert.id}')">
-                    <i class="fas fa-download"></i>
-                  </button>
-                </td>
-              </tr>
-            `;
-          }).join('')}
+          ${certificates.map(cert => `
+            <tr
+              style="border-bottom: 1px solid var(--neutral-200); cursor: pointer;"
+              onclick="showCertificateDetails('${cert.id}')"
+            >
+              <td style="padding: 0.75rem;">${cert.id}</td>
+              <td style="padding: 0.75rem;">${cert.curso || 'N/A'}</td>
+              <td style="padding: 0.75rem;">${cert.fecha || 'N/A'}</td>
+              <td style="padding: 0.75rem;">
+                <span class="badge" style="background-color: var(--secondary-green); color: white;">
+                  valid
+                </span>
+              </td>
+            </tr>
+          `).join('')}
         </tbody>
       </table>
     </div>
@@ -984,7 +926,7 @@ function loadAdminData() {
     updateAdminStats(mockStats);
     displayUsersTable();
     displayCoursesTable();
-    displayAdminCertificatesTable();
+    loadCertificatesFromFirestore();
     hideLoading();
   }, 500);
 }
@@ -997,47 +939,69 @@ function updateAdminStats() {
   document.getElementById('admin-total-certificates').textContent = totalCertificates || 0;
 }
 
-// Función para mostrar toast de confirmación
-let userIdToDelete = null;
-function showConfirmationToast(userId) {
-  userIdToDelete = userId;
-  const container = document.getElementById('confirmation-toast-container');
-  container.innerHTML = '';
+// Función para mostrar toast
+function showToast(type, title, description = '') {
+  const container = document.getElementById('toast-container');
   const toast = document.createElement('div');
-  toast.className = 'toast warning';
+  toast.className = `toast ${type}`;
   toast.innerHTML = `
     <div class="toast-header">
-      <i class="fas fa-exclamation-triangle"></i>
-      <div class="toast-title">Confirm Deletion</div>
+      <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i>
+      <div class="toast-title">${title}</div>
     </div>
-    <div class="toast-description">Are you sure you want to delete this user? This action cannot be undone.</div>
-    <div class="toast-actions">
-      <button class="btn btn-outline" id="cancel-delete-toast">Cancel</button>
-      <button class="btn btn-primary" id="confirm-delete-toast">Delete</button>
-    </div>
+    ${description ? `<div class="toast-description">${description}</div>` : ''}
   `;
   container.appendChild(toast);
-  document.getElementById('cancel-delete-toast').addEventListener('click', () => {
-    container.innerHTML = '';
-    userIdToDelete = null;
-  });
-  document.getElementById('confirm-delete-toast').addEventListener('click', async () => {
-    container.innerHTML = '';
-    if (!userIdToDelete) return;
-    try {
-      showLoading();
-      console.log("Intentando eliminar al usuario con ID:", userIdToDelete);
-      await dbUsers.collection('users').doc(userIdToDelete).delete();
-      showToast('success', 'User Deleted', 'The user has been deleted successfully.');
-      usersCache = usersCache.filter(user => user.id !== userIdToDelete);
-      displayUsersTable();
-    } catch (error) {
-      console.error("Error deleting user:", error);
-      showToast('error', 'Error', 'Failed to delete user. Check console for details.');
-    } finally {
-      hideLoading();
-      userIdToDelete = null;
+  setTimeout(() => {
+    if (toast.parentNode) {
+      toast.parentNode.removeChild(toast);
     }
+  }, 5000);
+}
+
+// Función para mostrar loading
+function showLoading() {
+  document.getElementById('loading').classList.remove('hidden');
+}
+
+// Función para ocultar loading
+function hideLoading() {
+  document.getElementById('loading').classList.add('hidden');
+}
+
+// Función para cargar datos de pestaña
+function loadTabData(tabName) {
+  switch(tabName) {
+    case 'users':
+      displayUsersTable();
+      break;
+    case 'courses':
+      displayCoursesTable();
+      break;
+    case 'certificates':
+      loadCertificatesFromFirestore();
+      break;
+  }
+}
+
+// Función para mostrar pestaña
+function showTab(tabName) {
+  document.querySelectorAll('.tab-trigger').forEach(trigger => {
+    trigger.classList.toggle('active', trigger.dataset.tab === tabName);
+  });
+  document.querySelectorAll('.tab-content').forEach(content => {
+    content.classList.toggle('active', content.id === `${tabName}-tab`);
+  });
+  loadTabData(tabName);
+}
+
+// Función para configurar pestañas
+function setupTabs() {
+  document.querySelectorAll('.tab-trigger').forEach(trigger => {
+    trigger.addEventListener('click', (e) => {
+      const tabName = e.target.dataset.tab;
+      showTab(tabName);
+    });
   });
 }
 
@@ -1161,7 +1125,6 @@ function createCertificateCard(certificate) {
   const completionDate = new Date(certificate.completionDate).toLocaleDateString();
   const courseThumbnail = certificate.course?.image;
   const linkedInUrl = `https://www.linkedin.com/profile/add?startTask=CERTIFICATION_NAME&name=${encodeURIComponent(certificate.course.title)}&organizationId=13993759&issueYear=2025&issueMonth=6&certUrl=https://l3v145431.github.io/Verificate.github.io/&certificateUrl=${encodeURIComponent(window.location.href)}&certificateId=${encodeURIComponent(certificate.id)}`;
-
   return `
     <div class="certificate-card">
       ${courseThumbnail ? `
@@ -1199,6 +1162,496 @@ function updateGraduateStats(certificates) {
   const totalHours = certificates?.reduce((sum, cert) => sum + cert.course.duration, 0) || 0;
   document.getElementById('total-certificates').textContent = totalCertificates;
   document.getElementById('total-hours').textContent = totalHours;
+}
+
+// Función para cargar datos iniciales
+function loadInitialData() {
+  loadGraduateData();
+}
+
+// Función para cargar usuarios desde localStorage
+function loadUsersFromLocalStorage() {
+  const savedUsers = localStorage.getItem('usersCache');
+  if (savedUsers) {
+    usersCache = JSON.parse(savedUsers);
+  } else {
+    usersCache = [];
+  }
+  validateUsers();
+}
+
+// Función para validar usuarios
+function validateUsers() {
+  usersCache = usersCache.map(user => {
+    if (!user.id) user.id = Math.floor(Math.random() * 1000000);
+    if (!user.name) user.name = 'Unknown';
+    if (!user.email) user.email = 'unknown@example.com';
+    if (!user.role) user.role = 'graduate';
+    if (!user.courses) user.courses = [];
+    if (!user.createdAt) user.createdAt = new Date().toISOString();
+    return user;
+  });
+  localStorage.setItem('usersCache', JSON.stringify(usersCache));
+}
+
+// Función para mostrar toast de confirmación
+let userIdToDelete = null;
+function showConfirmationToast(userId) {
+  userIdToDelete = userId;
+  const container = document.getElementById('confirmation-toast-container');
+  container.innerHTML = '';
+  const toast = document.createElement('div');
+  toast.className = 'toast warning';
+  toast.innerHTML = `
+    <div class="toast-header">
+      <i class="fas fa-exclamation-triangle"></i>
+      <div class="toast-title">Confirm Deletion</div>
+    </div>
+    <div class="toast-description">Are you sure you want to delete this user? This action cannot be undone.</div>
+    <div class="toast-actions">
+      <button class="btn btn-outline" id="cancel-delete-toast">Cancel</button>
+      <button class="btn btn-primary" id="confirm-delete-toast">Delete</button>
+    </div>
+  `;
+  container.appendChild(toast);
+  document.getElementById('cancel-delete-toast').addEventListener('click', () => {
+    container.innerHTML = '';
+    userIdToDelete = null;
+  });
+  document.getElementById('confirm-delete-toast').addEventListener('click', async () => {
+    container.innerHTML = '';
+    if (!userIdToDelete) return;
+    try {
+      showLoading();
+      console.log("Intentando eliminar al usuario con ID:", userIdToDelete);
+      await dbUsers.collection('users').doc(userIdToDelete).delete();
+      showToast('success', 'User Deleted', 'The user has been deleted successfully.');
+      usersCache = usersCache.filter(user => user.id !== userIdToDelete);
+      displayUsersTable();
+    } catch (error) {
+      console.error("Error deleting user:", error);
+      showToast('error', 'Error', 'Failed to delete user. Check console for details.');
+    } finally {
+      hideLoading();
+      userIdToDelete = null;
+    }
+  });
+}
+
+// Función para eliminar usuario
+async function deleteUser(userId) {
+  const isConfirmed = confirm("Are you sure you want to delete this user? This action cannot be undone.");
+  if (!isConfirmed) return;
+  try {
+    showLoading();
+    await dbUsers.collection('users').doc(userId).delete();
+    showToast('success', 'User Deleted', 'The user has been deleted successfully.');
+    usersCache = usersCache.filter(user => user.id !== userId);
+    displayUsersTable();
+  } catch (error) {
+    console.error("Error deleting user:", error);
+    showToast('error', 'Error', 'Failed to delete user. Check console for details.');
+  } finally {
+    hideLoading();
+  }
+}
+
+// Función para cancelar formulario de curso
+function cancelCourseForm() {
+  document.getElementById('course-form-container').classList.add('hidden');
+}
+
+// Función para cargar usuarios en el formulario de cursos
+function loadUsersIntoCourseForm() {
+  const container = document.getElementById('course-users-checkboxes');
+  container.innerHTML = '';
+  usersCache.forEach(user => {
+    const checkboxItem = document.createElement('div');
+    checkboxItem.className = 'checkbox-item';
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.id = `user-${user.id}`;
+    checkbox.value = user.id;
+    const label = document.createElement('label');
+    label.htmlFor = `user-${user.id}`;
+    label.innerHTML = `
+      ${user.name} (${user.email})
+      <br>
+      <small style="color: var(--neutral-600);">
+        Cursos: ${user.courses?.map(cid => {
+          const course = coursesCache.find(c => c.id === cid);
+          return course ? course.title : 'Unknown';
+        }).join(', ') || 'None'}
+      </small>
+    `;
+    checkboxItem.appendChild(checkbox);
+    checkboxItem.appendChild(label);
+    container.appendChild(checkboxItem);
+  });
+  if (currentCourseId) {
+    const course = coursesCache.find(c => c.id === currentCourseId);
+    if (course?.users) {
+      course.users.forEach(userId => {
+        const checkbox = document.querySelector(`#user-${userId}`);
+        if (checkbox) checkbox.checked = true;
+      });
+    }
+  }
+}
+
+// Función para mostrar los usuarios del curso en un modal
+function showCourseUsers(courseId) {
+  const course = coursesCache.find(c => c.id === courseId);
+  if (!course) return;
+  if (!course.users || course.users.length === 0) {
+    showToast('warning', 'No Users', 'This course has no participants.');
+    return;
+  }
+  const modal = document.createElement('div');
+  modal.className = 'course-users-modal';
+  modal.innerHTML = `
+    <div class="course-users-modal-content">
+      <div class="course-users-modal-header">
+        <h3>Participants in ${course.title}</h3>
+        <button class="course-users-modal-close" onclick="closeCourseUsersModal(this)">&times;</button>
+      </div>
+      <ul class="course-users-list">
+        ${course.users.map(userId => {
+          const user = usersCache.find(u => u.id == userId);
+          return `<li>${user ? user.name : 'Unknown User'}</li>`;
+        }).join('')}
+      </ul>
+    </div>
+  `;
+  document.body.appendChild(modal);
+}
+
+// Función para cerrar el modal
+function closeCourseUsersModal(button) {
+  const modal = button.closest('.course-users-modal');
+  if (modal) modal.remove();
+}
+
+// Imagen por defecto en Base64
+const defaultImageBase64 = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1MCIgaGVpZ2h0PSI1MCIgdmlld0JveD0iMCAwIDUwIDUwIiBmaWxsPSJub25lIiBzdHJva2U9IiNjY2MiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cmVjdCB3aWR0aD0iNTAiIGhlaWdodD0iNTAiIGZpbGw9IiNmZmYiLz48Y2lyY2xlIGN4PSIyNSIgY3k9IjI1IiByPSIyMCIvPjx0ZXh0IHRleHQtYW5jaG9yPSJtaWRkbGUiIHg9IjI1IiB5PSIyNSIgZmlsbD0iI2RlZCI+Qy9zdGFnZTwvdGV4dD48L3N2Zz4=";
+
+// Función para obtener la URL base de la aplicación
+function getBaseUrl() {
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    return `http://${window.location.hostname}:${window.location.port}`;
+  } else if (window.location.hostname.includes('github.io')) {
+    return 'https://most-improve123.github.io/LIMPPL';
+  } else {
+    return `https://${window.location.hostname}`;
+  }
+}
+
+// Función para configurar carga de archivos
+function setupFileUpload() {
+  const uploadArea = document.getElementById('file-upload-area');
+  const fileInput = document.getElementById('csv-file');
+  const importBtn = document.getElementById('import-btn');
+  if (!uploadArea || !fileInput) return;
+  uploadArea.addEventListener('click', () => fileInput.click());
+  uploadArea.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    uploadArea.style.borderColor = 'var(--primary)';
+  });
+  uploadArea.addEventListener('dragleave', () => {
+    uploadArea.style.borderColor = 'var(--neutral-200)';
+  });
+  uploadArea.addEventListener('drop', (e) => {
+    e.preventDefault();
+    uploadArea.style.borderColor = 'var(--neutral-200)';
+    const files = e.dataTransfer.files;
+    if (files.length > 0 && files[0].type === 'text/csv') {
+      handleFileSelection(files[0]);
+    }
+  });
+  fileInput.addEventListener('change', (e) => {
+    if (e.target.files.length > 0) {
+      handleFileSelection(e.target.files[0]);
+    }
+  });
+}
+
+// Función para manejar selección de archivo
+function handleFileSelection(file) {
+  const fileInfo = document.getElementById('file-info');
+  const fileName = document.getElementById('file-name');
+  const uploadArea = document.getElementById('file-upload-area');
+  const importBtn = document.getElementById('import-btn');
+  fileName.textContent = file.name;
+  uploadArea.style.display = 'none';
+  fileInfo.classList.remove('hidden');
+  importBtn.disabled = false;
+}
+
+// Función para limpiar archivo
+function clearFile() {
+  const fileInfo = document.getElementById('file-info');
+  const uploadArea = document.getElementById('file-upload-area');
+  const importBtn = document.getElementById('import-btn');
+  const fileInput = document.getElementById('csv-file');
+  fileInput.value = '';
+  fileInfo.classList.add('hidden');
+  uploadArea.style.display = 'block';
+  importBtn.disabled = true;
+}
+
+// Función para validar estructura CSV
+function validateCsvStructure(data, type) {
+  if (type === 'students') {
+    const requiredFields = ['nombre', 'email', 'curso'];
+    for (const row of data) {
+      const missingFields = requiredFields.filter(field => !row[field]);
+      if (missingFields.length > 0) {
+        return { valid: false, message: `Faltan campos en la fila: ${JSON.stringify(row)}. Campos requeridos: ${missingFields.join(', ')}` };
+      }
+    }
+  } else if (type === 'certificates') {
+    const requiredFields = ['nombre', 'email', 'curso'];
+    for (const row of data) {
+      const missingFields = requiredFields.filter(field => !row[field]);
+      if (missingFields.length > 0) {
+        return { valid: false, message: `Faltan campos en la fila: ${JSON.stringify(row)}. Campos requeridos: ${missingFields.join(', ')}` };
+      }
+    }
+  }
+  return { valid: true };
+}
+
+// Función para importar CSV
+async function importCsv() {
+  const fileInput = document.getElementById('csv-file');
+  const file = fileInput.files[0];
+  if (!file) {
+    showToast('error', 'No File Selected', 'Please select a CSV file to import.');
+    return;
+  }
+  const importType = document.querySelector('input[name="import-type"]:checked').value;
+  showLoading();
+  try {
+    const results = await new Promise((resolve, reject) => {
+      Papa.parse(file, {
+        header: true,
+        complete: resolve,
+        error: reject
+      });
+    });
+    const data = results.data;
+    if (importType === 'students') {
+      await importStudents(data);
+    } else {
+      await importCertificates(data);
+    }
+  } catch (error) {
+    console.error('Error importing CSV:', error);
+    showToast('error', 'Import Failed', error.message || 'An error occurred.');
+  } finally {
+    hideLoading();
+    clearFile();
+  }
+}
+
+// Función para generar un token aleatorio
+function generateRandomToken() {
+  return 'token-' + Math.random().toString(36).substr(2, 9);
+}
+
+// Función para enviar el magic link por correo electrónico
+async function sendBrevoMagicLinkEmail(email, magicLink) {
+  try {
+    const response = await fetch('https://wespark-backend.onrender.com/send-magic-link', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email, magicLink }),
+    });
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error(`Error al enviar email a ${email}:`, errorData.error || 'Unknown error');
+      return { success: false };
+    }
+    return await response.json();
+  } catch (error) {
+    console.error(`Error de red al enviar email a ${email}:`, error);
+    return { success: false };
+  }
+}
+
+// Función para generar contraseñas aleatorias
+function generateRandomPassword() {
+  return Math.random().toString(36).slice(-10);
+}
+
+// Función para importar estudiantes desde CSV
+async function importStudents(studentsData) {
+  const zip = new JSZip();
+  const defaultDate = new Date().toISOString().split('T')[0];
+  let successCount = 0;
+  let errorCount = 0;
+  for (const row of studentsData) {
+    try {
+      const { nombre, email, curso: courseName } = row;
+      if (!nombre || !email || !courseName) {
+        console.warn(`Faltan datos en la fila: ${JSON.stringify(row)}. Se omitirá.`);
+        errorCount++;
+        continue;
+      }
+      const course = coursesCache.find(c => c.title.toLowerCase() === courseName.toLowerCase());
+      if (!course) {
+        console.warn(`Curso no encontrado: ${courseName}. Se omitirá.`);
+        errorCount++;
+        continue;
+      }
+      const usersRef = dbUsers.collection('users');
+      const query = usersRef.where('email', '==', email);
+      const snapshot = await query.get();
+      let userId;
+      if (!snapshot.empty) {
+        userId = snapshot.docs[0].id;
+        const userData = snapshot.docs[0].data();
+        const userCourses = userData.courses || [];
+        if (!userCourses.includes(course.id)) {
+          userCourses.push(course.id);
+          await usersRef.doc(userId).update({
+            courses: userCourses,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+          console.log(`Curso "${courseName}" asignado a estudiante existente: ${email}`);
+        } else {
+          console.log(`Estudiante ${email} ya tiene el curso "${courseName}"`);
+        }
+      } else {
+        const userCredential = await auth.createUserWithEmailAndPassword(
+          email,
+          generateRandomPassword()
+        );
+        userId = userCredential.user.uid;
+        await usersRef.doc(userId).set({
+          name: nombre,
+          email: email,
+          role: 'graduate',
+          courses: [course.id],
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        const token = generateRandomToken();
+        const magicLink = `${getBaseUrl()}/login.html?token=${token}&email=${encodeURIComponent(email)}`;
+        await sendBrevoMagicLinkEmail(email, magicLink);
+        console.log(`Nuevo estudiante creado: ${email} con curso "${courseName}"`);
+      }
+      // Asegúrate de que el curso tenga al usuario en su lista de usuarios
+      const courseRef = dbUsers.collection('courses').doc(course.id);
+      const courseDoc = await courseRef.get();
+      const courseData = courseDoc.data();
+      const courseUsers = courseData.users || [];
+      if (!courseUsers.includes(userId)) {
+        courseUsers.push(userId);
+        await courseRef.update({
+          users: courseUsers,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      }
+      const certificateId = generateUniqueId();
+      const hashHex = await generateHash(certificateId);
+      const pdfBlob = await generarPDFIndividual(nombre, courseName, defaultDate, certificateId, hashHex);
+      zip.file(`certificado_${certificateId}.pdf`, pdfBlob);
+      successCount++;
+    } catch (error) {
+      console.error(`Error procesando estudiante ${row.email}:`, error);
+      errorCount++;
+    }
+  }
+  if (successCount > 0) {
+    const zipBlob = await zip.generateAsync({ type: 'blob' });
+    const zipUrl = URL.createObjectURL(zipBlob);
+    const a = document.createElement('a');
+    a.href = zipUrl;
+    a.download = 'certificados_estudiantes.zip';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+  showToast(
+    successCount > 0 ? 'success' : 'error',
+    'Import Results',
+    `Success: ${successCount} | Errors: ${errorCount}`
+  );
+  // Actualizar la caché local
+  await loadUsers();
+  await loadCoursesFromFirestore();
+}
+
+// Función para filtrar usuarios según el término de búsqueda
+function filterUsersTable(searchTerm) {
+  const term = searchTerm.toLowerCase();
+  const filteredUsers = usersCache.filter(user =>
+    user.name.toLowerCase().includes(term) ||
+    user.email.toLowerCase().includes(term) ||
+    user.role.toLowerCase().includes(term)
+  );
+  displayUsersTable(filteredUsers);
+}
+
+// Función para filtrar cursos según el término de búsqueda
+function filterCoursesTable(searchTerm) {
+  const term = searchTerm.toLowerCase();
+  const filteredCourses = coursesCache.filter(course =>
+    course.title.toLowerCase().includes(term) ||
+    course.description.toLowerCase().includes(term) ||
+    course.duration.toString().includes(term)
+  );
+  displayCoursesTable(filteredCourses);
+}
+
+// Función para filtrar certificados según el término de búsqueda
+function filterCertificatesTable(searchTerm) {
+  const term = searchTerm.toLowerCase();
+  const filteredCertificates = certificatesCache.filter(cert => {
+    const certId = cert.id ? `ws-${String(cert.id).toLowerCase()}` : '';
+    const idMatch = certId.includes(term);
+    return idMatch;
+  });
+  displayAdminCertificatesTable(filteredCertificates);
+}
+
+// Función para configurar event listeners
+function setupEventListeners() {
+  document.querySelectorAll('.nav-btn, .mobile-nav-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const view = e.target.dataset.view;
+      if (view) showView(view);
+    });
+  });
+  const certInput = document.getElementById('certificate-id');
+  if (certInput) {
+    certInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        verifyCertificate();
+      }
+    });
+  }
+  document.addEventListener('input', (e) => {
+    if (e.target.id === 'users-search') {
+      filterUsersTable(e.target.value);
+    } else if (e.target.id === 'courses-search') {
+      filterCoursesTable(e.target.value);
+    } else if (e.target.id === 'certificates-search') {
+      filterCertificatesTable(e.target.value);
+    }
+  });
+
+  // Cerrar el modal si se hace clic fuera del contenido
+  const modal = document.getElementById('certificate-details-modal');
+  if (modal) {
+    modal.addEventListener('click', function(event) {
+      if (event.target === this) {
+        closeCertificateDetailsModal();
+      }
+    });
+  }
 }
 
 // Función para verificar certificado
@@ -1319,394 +1772,6 @@ function displayVerificationError() {
   resultContainer.classList.remove('hidden');
 }
 
-// Función para configurar pestañas
-function setupTabs() {
-  document.querySelectorAll('.tab-trigger').forEach(trigger => {
-    trigger.addEventListener('click', (e) => {
-      const tabName = e.target.dataset.tab;
-      showTab(tabName);
-    });
-  });
-}
-
-// Función para mostrar pestaña
-function showTab(tabName) {
-  document.querySelectorAll('.tab-trigger').forEach(trigger => {
-    trigger.classList.toggle('active', trigger.dataset.tab === tabName);
-  });
-  document.querySelectorAll('.tab-content').forEach(content => {
-    content.classList.toggle('active', content.id === `${tabName}-tab`);
-  });
-  loadTabData(tabName);
-}
-
-// Función para cargar datos de pestaña
-function loadTabData(tabName) {
-  switch(tabName) {
-    case 'users':
-      displayUsersTable();
-      break;
-    case 'courses':
-      displayCoursesTable();
-      break;
-    case 'certificates':
-      displayAdminCertificatesTable();
-      break;
-  }
-}
-
-// Función para obtener la URL base de la aplicación
-function getBaseUrl() {
-  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-    return `http://${window.location.hostname}:${window.location.port}`;
-  } else if (window.location.hostname.includes('github.io')) {
-    return 'https://most-improve123.github.io/LIMPPL';
-  } else {
-    return `https://${window.location.hostname}`;
-  }
-}
-
-// Función para configurar carga de archivos
-function setupFileUpload() {
-  const uploadArea = document.getElementById('file-upload-area');
-  const fileInput = document.getElementById('csv-file');
-  const importBtn = document.getElementById('import-btn');
-  if (!uploadArea || !fileInput) return;
-  uploadArea.addEventListener('click', () => fileInput.click());
-  uploadArea.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    uploadArea.style.borderColor = 'var(--primary)';
-  });
-  uploadArea.addEventListener('dragleave', () => {
-    uploadArea.style.borderColor = 'var(--neutral-200)';
-  });
-  uploadArea.addEventListener('drop', (e) => {
-    e.preventDefault();
-    uploadArea.style.borderColor = 'var(--neutral-200)';
-    const files = e.dataTransfer.files;
-    if (files.length > 0 && files[0].type === 'text/csv') {
-      handleFileSelection(files[0]);
-    }
-  });
-  fileInput.addEventListener('change', (e) => {
-    if (e.target.files.length > 0) {
-      handleFileSelection(e.target.files[0]);
-    }
-  });
-}
-
-// Función para manejar selección de archivo
-function handleFileSelection(file) {
-  const fileInfo = document.getElementById('file-info');
-  const fileName = document.getElementById('file-name');
-  const uploadArea = document.getElementById('file-upload-area');
-  const importBtn = document.getElementById('import-btn');
-  fileName.textContent = file.name;
-  uploadArea.style.display = 'none';
-  fileInfo.classList.remove('hidden');
-  importBtn.disabled = false;
-}
-
-// Función para limpiar archivo
-function clearFile() {
-  const fileInfo = document.getElementById('file-info');
-  const uploadArea = document.getElementById('file-upload-area');
-  const importBtn = document.getElementById('import-btn');
-  const fileInput = document.getElementById('csv-file');
-  fileInput.value = '';
-  fileInfo.classList.add('hidden');
-  uploadArea.style.display = 'block';
-  importBtn.disabled = true;
-}
-
-function validateCsvStructure(data, type) {
-  if (type === 'students') {
-    const requiredFields = ['nombre', 'email', 'curso'];
-    for (const row of data) {
-      const missingFields = requiredFields.filter(field => !row[field]);
-      if (missingFields.length > 0) {
-        return { valid: false, message: `Faltan campos en la fila: ${JSON.stringify(row)}. Campos requeridos: ${missingFields.join(', ')}` };
-      }
-    }
-  } else if (type === 'certificates') {
-    const requiredFields = ['nombre', 'email', 'curso'];
-    for (const row of data) {
-      const missingFields = requiredFields.filter(field => !row[field]);
-      if (missingFields.length > 0) {
-        return { valid: false, message: `Faltan campos en la fila: ${JSON.stringify(row)}. Campos requeridos: ${missingFields.join(', ')}` };
-      }
-    }
-  }
-  return { valid: true };
-}
-
-// Función para importar CSV
-async function importCsv() {
-  const fileInput = document.getElementById('csv-file');
-  const file = fileInput.files[0];
-  if (!file) {
-    showToast('error', 'No File Selected', 'Please select a CSV file to import.');
-    return;
-  }
-  const importType = document.querySelector('input[name="import-type"]:checked').value;
-  showLoading();
-  try {
-    const results = await new Promise((resolve, reject) => {
-      Papa.parse(file, {
-        header: true,
-        complete: resolve,
-        error: reject
-      });
-    });
-    const data = results.data;
-    if (importType === 'students') {
-      await importStudents(data);
-    } else {
-      await importCertificates(data);
-    }
-  } catch (error) {
-    console.error('Error importing CSV:', error);
-    showToast('error', 'Import Failed', error.message || 'An error occurred.');
-  } finally {
-    hideLoading();
-    clearFile();
-  }
-}
-
-// Función para generar un token aleatorio
-function generateRandomToken() {
-  return 'token-' + Math.random().toString(36).substr(2, 9);
-}
-
-// Función para enviar el magic link por correo electrónico
-async function sendBrevoMagicLinkEmail(email, magicLink) {
-  try {
-    const response = await fetch('https://wespark-backend.onrender.com/send-magic-link', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ email, magicLink }),
-    });
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error(`Error al enviar email a ${email}:`, errorData.error || 'Unknown error');
-      return { success: false };
-    }
-    return await response.json();
-  } catch (error) {
-    console.error(`Error de red al enviar email a ${email}:`, error);
-    return { success: false };
-  }
-}
-
-// Función para generar contraseñas aleatorias
-function generateRandomPassword() {
-  return Math.random().toString(36).slice(-10);
-}
-
-// Función para importar estudiantes desde CSV
-async function importStudents(studentsData) {
-  const zip = new JSZip();
-  const defaultDate = new Date().toISOString().split('T')[0];
-  let successCount = 0;
-  let errorCount = 0;
-
-  for (const row of studentsData) {
-    try {
-      const { nombre, email, curso: courseName } = row;
-      if (!nombre || !email || !courseName) {
-        console.warn(`Faltan datos en la fila: ${JSON.stringify(row)}. Se omitirá.`);
-        errorCount++;
-        continue;
-      }
-
-      const course = coursesCache.find(c => c.title.toLowerCase() === courseName.toLowerCase());
-      if (!course) {
-        console.warn(`Curso no encontrado: ${courseName}. Se omitirá.`);
-        errorCount++;
-        continue;
-      }
-
-      const usersRef = dbUsers.collection('users');
-      const query = usersRef.where('email', '==', email);
-      const snapshot = await query.get();
-      let userId;
-
-      if (!snapshot.empty) {
-        userId = snapshot.docs[0].id;
-        const userData = snapshot.docs[0].data();
-        const userCourses = userData.courses || [];
-        if (!userCourses.includes(course.id)) {
-          userCourses.push(course.id);
-          await usersRef.doc(userId).update({
-            courses: userCourses,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-          });
-          console.log(`Curso "${courseName}" asignado a estudiante existente: ${email}`);
-        } else {
-          console.log(`Estudiante ${email} ya tiene el curso "${courseName}"`);
-        }
-      } else {
-        const userCredential = await auth.createUserWithEmailAndPassword(
-          email,
-          generateRandomPassword()
-        );
-        userId = userCredential.user.uid;
-        await usersRef.doc(userId).set({
-          name: nombre,
-          email: email,
-          role: 'graduate',
-          courses: [course.id],
-          createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-        const token = generateRandomToken();
-        const magicLink = `${getBaseUrl()}/login.html?token=${token}&email=${encodeURIComponent(email)}`;
-        await sendBrevoMagicLinkEmail(email, magicLink);
-        console.log(`Nuevo estudiante creado: ${email} con curso "${courseName}"`);
-      }
-
-      // Asegúrate de que el curso tenga al usuario en su lista de usuarios
-      const courseRef = dbUsers.collection('courses').doc(course.id);
-      const courseDoc = await courseRef.get();
-      const courseData = courseDoc.data();
-      const courseUsers = courseData.users || [];
-
-      if (!courseUsers.includes(userId)) {
-        courseUsers.push(userId);
-        await courseRef.update({
-          users: courseUsers,
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-      }
-
-      const certificateId = generateUniqueId();
-      const hashHex = await generateHash(certificateId);
-      const pdfBlob = await generarPDFIndividual(nombre, courseName, defaultDate, certificateId, hashHex);
-      zip.file(`certificado_${certificateId}.pdf`, pdfBlob);
-      successCount++;
-    } catch (error) {
-      console.error(`Error procesando estudiante ${row.email}:`, error);
-      errorCount++;
-    }
-  }
-
-  if (successCount > 0) {
-    const zipBlob = await zip.generateAsync({ type: 'blob' });
-    const zipUrl = URL.createObjectURL(zipBlob);
-    const a = document.createElement('a');
-    a.href = zipUrl;
-    a.download = 'certificados_estudiantes.zip';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  }
-
-  showToast(
-    successCount > 0 ? 'success' : 'error',
-    'Import Results',
-    `Success: ${successCount} | Errors: ${errorCount}`
-  );
-
-  // Actualizar la caché local
-  await loadUsers();
-  await loadCoursesFromFirestore();
-}
-
-// Función para mostrar loading
-function showLoading() {
-  document.getElementById('loading').classList.remove('hidden');
-}
-
-// Función para ocultar loading
-function hideLoading() {
-  document.getElementById('loading').classList.add('hidden');
-}
-
-// Función para mostrar toast
-function showToast(type, title, description = '') {
-  const container = document.getElementById('toast-container');
-  const toast = document.createElement('div');
-  toast.className = `toast ${type}`;
-  toast.innerHTML = `
-    <div class="toast-header">
-      <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i>
-      <div class="toast-title">${title}</div>
-    </div>
-    ${description ? `<div class="toast-description">${description}</div>` : ''}
-  `;
-  container.appendChild(toast);
-  setTimeout(() => {
-    if (toast.parentNode) {
-      toast.parentNode.removeChild(toast);
-    }
-  }, 5000);
-}
-
-// Función para cargar datos iniciales
-function loadInitialData() {
-  loadGraduateData();
-}
-
-// Función para filtrar usuarios según el término de búsqueda
-function filterUsersTable(searchTerm) {
-  const term = searchTerm.toLowerCase();
-  const filteredUsers = usersCache.filter(user =>
-    user.name.toLowerCase().includes(term) ||
-    user.email.toLowerCase().includes(term) ||
-    user.role.toLowerCase().includes(term)
-  );
-  displayUsersTable(filteredUsers);
-}
-
-// Función para filtrar cursos según el término de búsqueda
-function filterCoursesTable(searchTerm) {
-  const term = searchTerm.toLowerCase();
-  const filteredCourses = coursesCache.filter(course =>
-    course.title.toLowerCase().includes(term) ||
-    course.description.toLowerCase().includes(term) ||
-    course.duration.toString().includes(term)
-  );
-  displayCoursesTable(filteredCourses);
-}
-
-function filterCertificatesTable(searchTerm) {
-  const term = searchTerm.toLowerCase();
-  const filteredCertificates = certificatesCache.filter(cert => {
-    const certId = cert.id ? `ws-${String(cert.id).toLowerCase()}` : '';
-    const idMatch = certId.includes(term);
-    return idMatch;
-  });
-  displayAdminCertificatesTable(filteredCertificates);
-}
-
-// Función para configurar event listeners
-function setupEventListeners() {
-  document.querySelectorAll('.nav-btn, .mobile-nav-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      const view = e.target.dataset.view;
-      if (view) showView(view);
-    });
-  });
-  const certInput = document.getElementById('certificate-id');
-  if (certInput) {
-    certInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
-        verifyCertificate();
-      }
-    });
-  }
-  document.addEventListener('input', (e) => {
-    if (e.target.id === 'users-search') {
-      filterUsersTable(e.target.value);
-    } else if (e.target.id === 'courses-search') {
-      filterCoursesTable(e.target.value);
-    } else if (e.target.id === 'certificates-search') {
-      filterCertificatesTable(e.target.value);
-    }
-  });
-}
-
 // Evento DOMContentLoaded
 document.addEventListener('DOMContentLoaded', async function() {
   await loadUsers();
@@ -1722,8 +1787,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       const description = document.getElementById('course-description').value;
       const duration = parseInt(document.getElementById('course-duration').value);
       const checkboxes = document.querySelectorAll('#course-users-checkboxes input[type="checkbox"]:checked');
-      const selectedUsers = Array.from(checkboxes).map(checkbox => checkbox.value);
-
+      const selectedUserIds = Array.from(checkboxes).map(checkbox => checkbox.value);
       const imageInput = document.getElementById('course-image');
       let imageBase64 = '';
       if (imageInput.files.length > 0) {
@@ -1735,10 +1799,8 @@ document.addEventListener('DOMContentLoaded', async function() {
           imageBase64 = course.image || '';
         }
       }
-
       try {
         showLoading();
-
         if (currentCourseId) {
           // Editar curso existente en Firestore
           await dbUsers.collection('courses').doc(currentCourseId.toString()).update({
@@ -1746,108 +1808,33 @@ document.addEventListener('DOMContentLoaded', async function() {
             description: description,
             duration: duration,
             image: imageBase64,
-            users: selectedUsers,
+            users: selectedUserIds,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
           });
-
-          // Actualizar coursesCache
-          coursesCache = coursesCache.map(c => {
-            if (c.id === currentCourseId) {
-              return {
-                ...c,
-                title,
-                description,
-                duration,
-                image: imageBase64,
-                users: selectedUsers
-              };
-            }
-            return c;
-          });
-
-          // Actualizar los usuarios asignados al curso
-          const previousCourse = coursesCache.find(c => c.id === currentCourseId);
-          const previousUsers = previousCourse ? previousCourse.users || [] : [];
-
-          // Quitar curso de usuarios deseleccionados
-          for (const userId of previousUsers) {
-            if (!selectedUsers.includes(userId)) {
-              const user = usersCache.find(u => u.id === userId);
-              if (user) {
-                const updatedCourses = (user.courses || []).filter(id => id !== currentCourseId);
-                await dbUsers.collection('users').doc(userId).update({ courses: updatedCourses });
-                // Actualizar caché local
-                const userIndex = usersCache.findIndex(u => u.id === userId);
-                if (userIndex !== -1) usersCache[userIndex].courses = updatedCourses;
-              }
-            }
-          }
-
-          // Añadir curso a usuarios seleccionados
-          for (const userId of selectedUsers) {
-            const user = usersCache.find(u => u.id === userId);
-            if (user) {
-              const updatedCourses = user.courses ? [...user.courses] : [];
-              if (!updatedCourses.includes(currentCourseId)) {
-                updatedCourses.push(currentCourseId);
-                await dbUsers.collection('users').doc(userId).update({ courses: updatedCourses });
-                // Actualizar caché local
-                const userIndex = usersCache.findIndex(u => u.id === userId);
-                if (userIndex !== -1) usersCache[userIndex].courses = updatedCourses;
-              }
-            }
-          }
-
+          // Actualizar asignaciones de usuarios
+          await saveCourseAssignments(currentCourseId, selectedUserIds);
         } else {
-          // Crear nuevo curso en Firestore
+          // Crear nuevo curso
           const newCourseRef = dbUsers.collection('courses').doc();
           const newCourseId = newCourseRef.id;
-
           await newCourseRef.set({
             title: title,
             description: description,
             duration: duration,
             image: imageBase64,
-            users: selectedUsers,
+            users: selectedUserIds,
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
           });
-
-          // Añadir el nuevo curso a coursesCache
-          coursesCache.push({
-            id: newCourseId,
-            title: title,
-            description: description,
-            duration: duration,
-            image: imageBase64,
-            users: selectedUsers
-          });
-
-          // Asignar el curso a los usuarios seleccionados
-          for (const userId of selectedUsers) {
-            const user = usersCache.find(u => u.id === userId);
-            if (user) {
-              const updatedCourses = user.courses ? [...user.courses, newCourseId] : [newCourseId];
-              await dbUsers.collection('users').doc(userId).update({ courses: updatedCourses });
-              // Actualizar caché local
-              const userIndex = usersCache.findIndex(u => u.id === userId);
-              if (userIndex !== -1) usersCache[userIndex].courses = updatedCourses;
-            }
-          }
+          // Actualizar asignaciones de usuarios
+          await saveCourseAssignments(newCourseId, selectedUserIds);
         }
-
-        // Guardar en localStorage
-        localStorage.setItem('coursesCache', JSON.stringify(coursesCache));
-        localStorage.setItem('usersCache', JSON.stringify(usersCache));
-
-        // Actualizar la tabla de cursos
+        // Actualizar la caché local y la tabla de cursos
+        await loadCoursesFromFirestore();
         displayCoursesTable();
         displayUsersTable();
-
         // Ocultar el formulario
         document.getElementById('course-form-container').classList.add('hidden');
-        showToast('success', 'Course Saved', 'The course has been saved successfully.');
-
       } catch (error) {
         console.error("Error saving course:", error);
         showToast('error', 'Error', 'Failed to save course. Check console for details.');
@@ -1861,7 +1848,6 @@ document.addEventListener('DOMContentLoaded', async function() {
 
   initializeApp();
   setupEventListeners();
-
   const userName = localStorage.getItem('userName');
   const logoutButton = document.querySelector('.logout-btn');
   if (!userName) {
@@ -1869,12 +1855,10 @@ document.addEventListener('DOMContentLoaded', async function() {
   } else {
     document.querySelector('.user-info span').textContent = userName;
   }
-
   const userRole = localStorage.getItem('userRole');
   const adminBtns = document.querySelectorAll('.nav-btn[data-view="admin"], .mobile-nav-btn[data-view="admin"]');
   const graduateBtns = document.querySelectorAll('.nav-btn[data-view="graduate"], .mobile-nav-btn[data-view="graduate"]');
   const verifierBtns = document.querySelectorAll('.nav-btn[data-view="verifier"], .mobile-nav-btn[data-view="verifier"]');
-
   if (viewParam) {
     showView(viewParam);
   } else if (userRole === 'admin') {
@@ -1882,6 +1866,5 @@ document.addEventListener('DOMContentLoaded', async function() {
   } else {
     showView('graduate');
   }
-
   loadInitialData();
 });

@@ -180,6 +180,71 @@ body {
     right: 20px;
     z-index: 1001;
 }
+/* Estilos para el modal de detalles del certificado */
+#certificate-details-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+#certificate-details-modal .modal-content {
+  background-color: white;
+  padding: 1.5rem;
+  border-radius: 0.5rem;
+  width: 90%;
+  max-width: 500px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+#certificate-details-modal .close-modal {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: var(--neutral-600);
+}
+
+#certificate-details-modal .close-modal:hover {
+  color: var(--neutral-800);
+}
+
+#certificate-details-content {
+  margin-top: 1rem;
+}
+
+#certificate-details-content p {
+  margin-bottom: 0.75rem;
+  font-size: 0.9rem;
+  color: var(--neutral-800);
+}
+
+#certificate-details-content .detail-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--neutral-200);
+}
+
+#certificate-details-content .detail-label {
+  font-weight: 600;
+  color: var(--neutral-600);
+}
+
+#certificate-details-content .detail-value {
+  color: var(--neutral-800);
+  text-align: right;
+  max-width: 60%;
+  word-break: break-all;
+}
 
 .toast {
     background: white;

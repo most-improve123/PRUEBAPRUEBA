@@ -34,19 +34,14 @@ function showCertificateDetails(certificateId) {
     showToast('error', 'Certificate Not Found', 'The certificate details could not be loaded.');
     return;
   }
-
   const modal = document.getElementById('certificate-details-modal');
   const content = document.getElementById('certificate-details-content');
 
-  // Llenar el contenido del modal con los detalles del certificado
+  // Llenar el contenido del modal con los detalles del certificado, sin mostrar el nombre del usuario
   content.innerHTML = `
     <div class="detail-row">
       <span class="detail-label">Certificate ID:</span>
       <span class="detail-value">${cert.id || 'N/A'}</span>
-    </div>
-    <div class="detail-row">
-      <span class="detail-label">Student Name:</span>
-      <span class="detail-value">${cert.nombre || 'N/A'}</span>
     </div>
     <div class="detail-row">
       <span class="detail-label">Course:</span>
@@ -116,17 +111,32 @@ async function loadCoursesFromFirestore() {
 async function loadCertificatesFromFirestore() {
   try {
     const certificatesSnapshot = await dbCertificates.collection('certificates').get();
-    certificatesCache = certificatesSnapshot.docs.map(doc => ({
+    const allCertificates = certificatesSnapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
     }));
+
+    // Crear un mapa para almacenar un certificado por curso
+    const uniqueCertificatesByCourse = {};
+
+    allCertificates.forEach(cert => {
+      if (coursesCache.some(course => course.title === cert.curso)) {
+        if (!uniqueCertificatesByCourse[cert.curso]) {
+          uniqueCertificatesByCourse[cert.curso] = cert;
+        }
+      }
+    });
+
+    // Convertir el mapa a un array
+    const filteredCertificates = Object.values(uniqueCertificatesByCourse);
+
+    certificatesCache = filteredCertificates;
     displayAdminCertificatesTable(certificatesCache);
   } catch (error) {
     console.error("Error al cargar certificados:", error);
     showToast('error', 'Error', 'No se pudieron cargar los certificados.');
   }
 }
-
 // Función para cargar cursos del usuario actual
 async function loadUserCourses() {
   try {
@@ -399,11 +409,8 @@ async function saveCourseAssignments(courseId, selectedUserIds) {
     const courseDoc = await courseRef.get();
     const currentUsers = courseDoc.exists ? courseDoc.data().users || [] : [];
     const usersToAdd = selectedUserIds.filter(userId => !currentUsers.includes(userId));
-    const usersToRemove = currentUsers.filter(userId => !selectedUserIds.includes(userId));
-    await courseRef.update({
-      users: selectedUserIds,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
+
+    // Solo generar certificados para nuevos usuarios asignados al curso
     for (const userId of usersToAdd) {
       const userRef = dbUsers.collection('users').doc(userId);
       const userDoc = await userRef.get();
@@ -411,38 +418,35 @@ async function saveCourseAssignments(courseId, selectedUserIds) {
         console.error(`User document with ID ${userId} does not exist.`);
         continue;
       }
-      await userRef.update({
-        courses: firebase.firestore.FieldValue.arrayUnion(courseId),
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
-      // Generar certificado automáticamente
+
+      // Verificar si el usuario ya tiene un certificado para este curso
       const user = usersCache.find(u => u.id === userId);
-      if (user) {
-        const course = coursesCache.find(c => c.id === courseId);
-        if (course) {
+      const course = coursesCache.find(c => c.id === courseId);
+
+      if (user && course) {
+        const existingCertificate = certificatesCache.find(cert =>
+          cert.nombre === user.name && cert.curso === course.title
+        );
+
+        if (!existingCertificate) {
           const certificateId = generateUniqueId();
           const hashHex = await generateHash(certificateId);
           await saveCertificateToFirestore(certificateId, user.name, course.title, new Date().toISOString(), hashHex);
         }
       }
     }
-    for (const userId of usersToRemove) {
-      const userRef = dbUsers.collection('users').doc(userId);
-      const userDoc = await userRef.get();
-      if (!userDoc.exists) {
-        console.error(`User document with ID ${userId} does not exist.`);
-        continue;
-      }
-      await userRef.update({
-        courses: firebase.firestore.FieldValue.arrayRemove(courseId),
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
-    }
+
+    await courseRef.update({
+      users: selectedUserIds,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
     // Actualizar la caché local
     const updatedCourseIndex = coursesCache.findIndex(course => course.id === courseId);
     if (updatedCourseIndex !== -1) {
       coursesCache[updatedCourseIndex].users = selectedUserIds;
     }
+
     // Actualizar la caché de usuarios
     for (const userId of usersToAdd) {
       const userIndex = usersCache.findIndex(user => user.id === userId);
@@ -450,14 +454,20 @@ async function saveCourseAssignments(courseId, selectedUserIds) {
         usersCache[userIndex].courses = [...(usersCache[userIndex].courses || []), courseId];
       }
     }
+
     for (const userId of usersToRemove) {
       const userIndex = usersCache.findIndex(user => user.id === userId);
       if (userIndex !== -1) {
         usersCache[userIndex].courses = (usersCache[userIndex].courses || []).filter(id => id !== courseId);
       }
     }
+
     localStorage.setItem('coursesCache', JSON.stringify(coursesCache));
     localStorage.setItem('usersCache', JSON.stringify(usersCache));
+
+    // Recargar los certificados para asegurarse de que se muestren correctamente
+    await loadCertificatesFromFirestore();
+
     showToast('success', 'Course Updated', 'The course assignments have been updated successfully.');
   } catch (error) {
     console.error("Error updating course assignments:", error);
@@ -920,16 +930,18 @@ function displayAdminCertificatesTable(certificates = certificatesCache) {
 // Función para cargar datos de administrador
 function loadAdminData() {
   showLoading();
-  setTimeout(() => {
-    const mockStats = { totalUsers: usersCache.length, totalCourses: coursesCache.length, totalCertificates: 25 };
+  setTimeout(async () => {
+    await loadCoursesFromFirestore(); // Asegúrate de que coursesCache esté actualizado
+    const mockStats = { totalUsers: usersCache.length, totalCourses: coursesCache.length, totalCertificates: certificatesCache.length };
     adminStatsCache = mockStats;
     updateAdminStats(mockStats);
     displayUsersTable();
     displayCoursesTable();
-    loadCertificatesFromFirestore();
+    await loadCertificatesFromFirestore(); // Cargar certificados después de cargar cursos
     hideLoading();
   }, 500);
 }
+
 
 // Función para actualizar estadísticas de administrador
 function updateAdminStats() {

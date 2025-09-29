@@ -61,10 +61,11 @@ function showToast(type, title, description = '') {
 }
 
 // Manejo del formulario de registro
+// Manejo del formulario de registro
 document.getElementById('register-form').addEventListener('submit', async function(e) {
   e.preventDefault();
-  const name = document.getElementById('name').value;
-  const email = document.getElementById('email').value;
+  const name = document.getElementById('name').value.trim();
+  const email = document.getElementById('email').value.trim();
   const password = document.getElementById('password').value;
   const role = document.getElementById('role').value;
 
@@ -74,15 +75,27 @@ document.getElementById('register-form').addEventListener('submit', async functi
     return;
   }
 
-  // Validación de correo único
   showLoading();
+
   try {
     const usersRef = db.collection('users');
-    const query = usersRef.where('email', '==', email).limit(1);
-    const snapshot = await query.get();
 
-    if (!snapshot.empty) {
+    // Verificar si el correo ya está registrado
+    const emailQuery = usersRef.where('email', '==', email).limit(1);
+    const emailSnapshot = await emailQuery.get();
+
+    if (!emailSnapshot.empty) {
       showToast('error', 'Email already in use', 'This email is already registered. Please use another email.');
+      hideLoading();
+      return;
+    }
+
+    // Verificar si el nombre ya está registrado
+    const nameQuery = usersRef.where('name', '==', name).limit(1);
+    const nameSnapshot = await nameQuery.get();
+
+    if (!nameSnapshot.empty) {
+      showToast('error', 'Name already in use', 'This name is already registered. Please use another name.');
       hideLoading();
       return;
     }

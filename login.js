@@ -250,36 +250,37 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Dentro de la verificación del token del magic link
 // Dentro de la verificación del token del magic link (en login.js)
+// Dentro de la verificación del token del magic link (en login.js)
 if (token === storedToken && email === storedEmail) {
   db.collection('users').where('email', '==', email).limit(1).get()
     .then(querySnapshot => {
       if (!querySnapshot.empty) {
         const userData = querySnapshot.docs[0].data();
         localStorage.setItem('userName', userData.name || email.split('@')[0]);
-        localStorage.setItem('userRole', userData.role || 'graduate'); // Guardar el rol
-
+        localStorage.setItem('userRole', userData.role || 'graduate');
+        localStorage.setItem('userUID', querySnapshot.docs[0].id); // Asegúrate de guardar el UID del usuario
         // Redirigir según el rol
         if (userData.role === 'admin') {
-          window.location.href = 'prueba.html?view=admin'; // Redirigir al panel de admin
+          window.location.href = 'prueba.html?view=admin';
         } else {
-          window.location.href = 'prueba.html?view=graduate'; // Redirigir al panel de graduate
+          window.location.href = 'prueba.html?view=graduate';
         }
       } else {
         localStorage.setItem('userName', email.split('@')[0]);
-        localStorage.setItem('userRole', 'graduate'); // Rol por defecto
-        window.location.href = 'prueba.html?view=graduate'; // Redirigir al panel de graduate
+        localStorage.setItem('userRole', 'graduate');
+        localStorage.setItem('userUID', auth.currentUser.uid); // Asegúrate de guardar el UID del usuario
+        window.location.href = 'prueba.html?view=graduate';
       }
     })
     .catch(error => {
       console.error("Error al obtener el rol del usuario:", error);
       localStorage.setItem('userName', email.split('@')[0]);
-      localStorage.setItem('userRole', 'graduate'); // Rol por defecto
-      window.location.href = 'prueba.html?view=graduate'; // Redirigir al panel de graduate
+      localStorage.setItem('userRole', 'graduate');
+      window.location.href = 'prueba.html?view=graduate';
     });
+} else {
+  showToast('error', 'Invalid link', 'The magic link is not valid or has expired.');
 }
-   else {
-      showToast('error', 'Invalid link', 'The magic link is not valid or has expired.');
-    }
   }
 
   // Manejo del formulario de login tradicional

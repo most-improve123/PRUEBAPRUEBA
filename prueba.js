@@ -138,16 +138,47 @@ async function loadCertificatesFromFirestore() {
   }
 }
 // Función para cargar cursos del usuario actual
+// Función para cargar cursos del usuario actual
+// Dentro de loadUserCourses
 async function loadUserCourses() {
   try {
     const userUID = localStorage.getItem('userUID');
-    if (!userUID) return [];
+    console.log("User UID:", userUID); // Log temporal
+
+    if (!userUID) {
+      console.error("No user UID found in localStorage.");
+      return [];
+    }
+
+    // Cargar usuarios desde Firestore si no están en la caché
+    if (usersCache.length === 0) {
+      await loadUsers();
+    }
+
     const user = usersCache.find(u => u.id === userUID);
-    if (!user) return [];
+    console.log("User data:", user); // Log temporal
+
+    if (!user) {
+      console.error("User not found in usersCache.");
+      return [];
+    }
+
     // Si el usuario no tiene cursos asignados, devolver array vacío
-    if (!user.courses || user.courses.length === 0) return [];
+    if (!user.courses || user.courses.length === 0) {
+      console.log("User has no courses assigned.");
+      return [];
+    }
+
+    // Cargar cursos desde Firestore si no están en la caché
+    if (coursesCache.length === 0) {
+      await loadCoursesFromFirestore();
+    }
+
     // Filtrar solo los cursos asignados al usuario
-    return coursesCache.filter(course => user.courses.includes(course.id));
+    const userCourses = coursesCache.filter(course => user.courses.includes(course.id));
+    console.log("User courses:", userCourses); // Log temporal
+
+    return userCourses;
   } catch (error) {
     console.error("Error al cargar cursos del usuario:", error);
     return [];
@@ -857,8 +888,10 @@ function displayCoursesTable(courses = coursesCache) {
 }
 
 // Función para mostrar cursos del usuario
+
 async function displayUserCourses() {
   const userCourses = await loadUserCourses();
+
   const grid = document.getElementById('certificates-grid');
   if (userCourses.length === 0) {
     grid.innerHTML = `
@@ -870,6 +903,7 @@ async function displayUserCourses() {
     `;
     return;
   }
+
   const mockCertificates = userCourses.map(course => ({
     id: course.id,
     nombre: localStorage.getItem('userName') || 'User',
@@ -877,6 +911,7 @@ async function displayUserCourses() {
     completionDate: '2023-01-15',
     course: course
   }));
+
   certificatesCache = mockCertificates;
   grid.innerHTML = mockCertificates.map(cert => createCertificateCard(cert)).join('');
   updateGraduateStats(mockCertificates);
@@ -1128,9 +1163,12 @@ function loadViewData(viewName) {
 // Función para cargar datos de graduado
 async function loadGraduateData() {
   showLoading();
-  await displayUserCourses();
+  await loadUsers(); // Asegúrate de cargar los usuarios
+  await loadCoursesFromFirestore(); // Asegúrate de cargar los cursos
+  await displayUserCourses(); // Asegúrate de mostrar los cursos del usuario
   hideLoading();
 }
+
 
 // Función para crear tarjeta de certificado
 function createCertificateCard(certificate) {
@@ -1178,9 +1216,13 @@ function updateGraduateStats(certificates) {
 
 // Función para cargar datos iniciales
 function loadInitialData() {
-  loadGraduateData();
+  const userRole = localStorage.getItem('userRole');
+  if (userRole === 'graduate') {
+    loadGraduateData();
+  } else if (userRole === 'admin') {
+    loadAdminData();
+  }
 }
-
 // Función para cargar usuarios desde localStorage
 function loadUsersFromLocalStorage() {
   const savedUsers = localStorage.getItem('usersCache');
@@ -1522,50 +1564,52 @@ async function importStudents(studentsData) {
       const query = usersRef.where('email', '==', email);
       const snapshot = await query.get();
       let userId;
-      if (!snapshot.empty) {
-        userId = snapshot.docs[0].id;
-        const userData = snapshot.docs[0].data();
-        const userCourses = userData.courses || [];
-        if (!userCourses.includes(course.id)) {
-          userCourses.push(course.id);
-          await usersRef.doc(userId).update({
-            courses: userCourses,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-          });
-          console.log(`Curso "${courseName}" asignado a estudiante existente: ${email}`);
-        } else {
-          console.log(`Estudiante ${email} ya tiene el curso "${courseName}"`);
-        }
-      } else {
-        const userCredential = await auth.createUserWithEmailAndPassword(
-          email,
-          generateRandomPassword()
-        );
-        userId = userCredential.user.uid;
-        await usersRef.doc(userId).set({
-          name: nombre,
-          email: email,
-          role: 'graduate',
-          courses: [course.id],
-          createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
+      // Dentro de la función importStudents
+if (!snapshot.empty) {
+  // Usuario existente
+  userId = snapshot.docs[0].id;
+  const userData = snapshot.docs[0].data();
+  const userCourses = userData.courses || [];
+
+  if (!userCourses.includes(course.id)) {
+    userCourses.push(course.id);
+    await usersRef.doc(userId).update({
+      courses: userCourses,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+  }
+} else {
+  // Nuevo usuario
+  const userCredential = await auth.createUserWithEmailAndPassword(email, generateRandomPassword());
+  userId = userCredential.user.uid;
+  await usersRef.doc(userId).set({
+    name: nombre,
+    email: email,
+    role: 'graduate',
+    courses: [course.id], // Asignar el curso al usuario
+    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+  });
+
         const token = generateRandomToken();
         const magicLink = `${getBaseUrl()}/login.html?token=${token}&email=${encodeURIComponent(email)}`;
         await sendBrevoMagicLinkEmail(email, magicLink);
         console.log(`Nuevo estudiante creado: ${email} con curso "${courseName}"`);
       }
+      
       // Asegúrate de que el curso tenga al usuario en su lista de usuarios
-      const courseRef = dbUsers.collection('courses').doc(course.id);
-      const courseDoc = await courseRef.get();
-      const courseData = courseDoc.data();
-      const courseUsers = courseData.users || [];
-      if (!courseUsers.includes(userId)) {
-        courseUsers.push(userId);
-        await courseRef.update({
-          users: courseUsers,
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-      }
+const courseRef = dbUsers.collection('courses').doc(course.id);
+const courseDoc = await courseRef.get();
+const courseData = courseDoc.data();
+const courseUsers = courseData.users || [];
+
+if (!courseUsers.includes(userId)) {
+  courseUsers.push(userId);
+  await courseRef.update({
+    users: courseUsers,
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  });
+}
+
       const certificateId = generateUniqueId();
       const hashHex = await generateHash(certificateId);
       const pdfBlob = await generarPDFIndividual(nombre, courseName, defaultDate, certificateId, hashHex);
@@ -1594,6 +1638,22 @@ async function importStudents(studentsData) {
   // Actualizar la caché local
   await loadUsers();
   await loadCoursesFromFirestore();
+  // Al final de la función importStudents
+if (successCount > 0) {
+  const zipBlob = await zip.generateAsync({ type: 'blob' });
+  const zipUrl = URL.createObjectURL(zipBlob);
+  const a = document.createElement('a');
+  a.href = zipUrl;
+  a.download = 'certificados_estudiantes.zip';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+
+  // Recargar los datos de usuarios y cursos
+  await loadUsers();
+  await loadCoursesFromFirestore();
+}
+
 }
 
 // Función para filtrar usuarios según el término de búsqueda

@@ -365,17 +365,22 @@
     <div class="import-container">
         <div class="card">
             <div class="card-header">
-                <h3>Import CSV Student Data</h3>
+                <h3>Import CSV Data</h3>
             </div>
             <div class="card-content">
-               
-             
-
+                <!-- Selector para elegir qué importar -->
+                <div style="margin-bottom: 1rem;">
+                    <label style="margin-right: 1rem;">
+                        <input type="radio" name="import-type" value="students" checked> Students
+                    </label>
+                    <label>
+                        <input type="radio" name="import-type" value="certificates"> Certificates
+                    </label>
+                </div>
                 <!-- Botón para descargar la plantilla -->
                 <button class="btn btn-outline" onclick="downloadTemplate()" style="margin-bottom: 1rem;">
                     <i class="fas fa-file-download"></i> Download Template
                 </button>
-
                 <!-- Área de carga de archivos -->
                 <div class="file-upload-area" id="file-upload-area">
                     <i class="fas fa-cloud-upload-alt"></i>
@@ -394,6 +399,7 @@
         </div>
     </div>
 </div>
+
 <div id="certificate-details-modal" class="modal hidden">
   <div class="modal-content">
     <span class="close" onclick="closeCertificateDetailsModal()">&times;</span>

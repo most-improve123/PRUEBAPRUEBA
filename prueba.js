@@ -263,33 +263,57 @@ async function downloadCertificate(certificateId) {
   }
 }
 
+// Función para descargar plantilla CORREGIDA
+// Función para descargar plantilla MODIFICADA (sin radio buttons)
 function downloadTemplate() {
-  const importType = document.querySelector('input[name="import-type"]:checked').value;
-  let csvContent;
-  let fileName;
+  try {
+    // Crear un contenedor oculto para los enlaces de descarga
+    const container = document.createElement("div");
+    container.style.position = "fixed";
+    container.style.left = "-10000px";
+    container.style.top = "-10000px";
+    document.body.appendChild(container);
 
-  if (importType === 'students') {
-    csvContent = "nombre,email,curso\nJuan Pérez,juan.perez@example.com,Introducción a la Programación\nMaría Gómez,maria.gomez@example.com,Introducción a la Programación";
-    fileName = "template_users.csv";
-  } else {
-    csvContent = "nombre,email,curso,fecha\nJuan Pérez,juan.perez@example.com,Introducción a la Programación,2025-09-22\nMaría Gómez,maria.gomez@example.com,Introducción a la Programación,2025-09-22";
-    fileName = "template_certificates.csv";
+    // Template para estudiantes
+    const studentsContent = "nombre,email,curso\nJuan Pérez,juan.perez@example.com,Introducción a la Programación\nMaría Gómez,maria.gomez@example.com,Introducción a la Programación";
+    const studentsBlob = new Blob([studentsContent], { type: 'text/csv;charset=utf-8;' });
+    const studentsUrl = URL.createObjectURL(studentsBlob);
+
+    // Template para certificados
+    const certificatesContent = "nombre,email,curso,fecha\nJuan Pérez,juan.perez@example.com,Introducción a la Programación,2025-09-22\nMaría Gómez,maria.gomez@example.com,Introducción a la Programación,2025-09-22";
+    const certificatesBlob = new Blob([certificatesContent], { type: 'text/csv;charset=utf-8;' });
+    const certificatesUrl = URL.createObjectURL(certificatesBlob);
+
+    // Crear enlace para estudiantes
+    const studentsLink = document.createElement("a");
+    studentsLink.setAttribute("href", studentsUrl);
+    studentsLink.setAttribute("download", "template_users.csv");
+    container.appendChild(studentsLink);
+
+    // Crear enlace para certificados
+    const certificatesLink = document.createElement("a");
+    certificatesLink.setAttribute("href", certificatesUrl);
+    certificatesLink.setAttribute("download", "template_certificates.csv");
+    container.appendChild(certificatesLink);
+
+    // Descargar ambos archivos
+    studentsLink.click();
+    setTimeout(() => {
+      certificatesLink.click();
+
+      // Limpiar después de la descarga
+      setTimeout(() => {
+        document.body.removeChild(container);
+        URL.revokeObjectURL(studentsUrl);
+        URL.revokeObjectURL(certificatesUrl);
+      }, 100);
+    }, 100);
+
+    showToast('success', 'Templates Downloaded', 'Both templates have been downloaded successfully');
+  } catch (error) {
+    console.error("Error downloading templates:", error);
+    showToast('error', 'Download Error', 'Failed to download templates');
   }
-
-  // Crear un blob con el contenido CSV
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-
-  // Crear un enlace para descargar el archivo
-  const link = document.createElement("a");
-  const url = URL.createObjectURL(blob);
-  link.setAttribute("href", url);
-  link.setAttribute("download", fileName);
-  link.style.visibility = 'hidden';
-
-  // Agregar el enlace al DOM y simular un clic para descargar
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
 }
 
 

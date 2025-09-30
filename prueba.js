@@ -262,74 +262,39 @@ async function downloadCertificate(certificateId) {
     hideLoading();
   }
 }
-
-// Función para descargar plantilla CORREGIDA
-// Función para descargar plantilla MODIFICADA (sin radio buttons)
 function downloadTemplate() {
-  try {
-    // Crear un contenedor oculto para los enlaces de descarga
-    const container = document.createElement("div");
-    container.style.position = "fixed";
-    container.style.left = "-10000px";
-    container.style.top = "-10000px";
-    document.body.appendChild(container);
+  const importTypeElement = document.querySelector('input[name="import-type"]:checked');
 
-    // Template para estudiantes
-    const studentsContent = "nombre,email,curso\nJuan Pérez,juan.perez@example.com,Introducción a la Programación\nMaría Gómez,maria.gomez@example.com,Introducción a la Programación";
-    const studentsBlob = new Blob([studentsContent], { type: 'text/csv;charset=utf-8;' });
-    const studentsUrl = URL.createObjectURL(studentsBlob);
-
-    // Template para certificados
-    const certificatesContent = "nombre,email,curso,fecha\nJuan Pérez,juan.perez@example.com,Introducción a la Programación,2025-09-22\nMaría Gómez,maria.gomez@example.com,Introducción a la Programación,2025-09-22";
-    const certificatesBlob = new Blob([certificatesContent], { type: 'text/csv;charset=utf-8;' });
-    const certificatesUrl = URL.createObjectURL(certificatesBlob);
-
-    // Crear enlace para estudiantes
-    const studentsLink = document.createElement("a");
-    studentsLink.setAttribute("href", studentsUrl);
-    studentsLink.setAttribute("download", "template_users.csv");
-    container.appendChild(studentsLink);
-
-    // Crear enlace para certificados
-    const certificatesLink = document.createElement("a");
-    certificatesLink.setAttribute("href", certificatesUrl);
-    certificatesLink.setAttribute("download", "template_certificates.csv");
-    container.appendChild(certificatesLink);
-
-    // Descargar ambos archivos
-    studentsLink.click();
-    setTimeout(() => {
-      certificatesLink.click();
-
-      // Limpiar después de la descarga
-      setTimeout(() => {
-        document.body.removeChild(container);
-        URL.revokeObjectURL(studentsUrl);
-        URL.revokeObjectURL(certificatesUrl);
-      }, 100);
-    }, 100);
-
-    showToast('success', 'Templates Downloaded', 'Both templates have been downloaded successfully');
-  } catch (error) {
-    console.error("Error downloading templates:", error);
-    showToast('error', 'Download Error', 'Failed to download templates');
-  }
-}
-
-
-function displayCertificates(certificates = certificatesCache) {
-  const grid = document.getElementById('certificates-grid');
-  if (!certificates || certificates.length === 0) {
-    grid.innerHTML = `
-      <div style="grid-column: 1 / -1; text-align: center; padding: 3rem;">
-        <i class="fas fa-tag" style="font-size: 3rem; color: var(--neutral-400); margin-bottom: 1rem;"></i>
-        <h3 style="color: var(--neutral-800); margin-bottom: 0.5rem;">No certificates yet</h3>
-        <p style="color: var(--neutral-600);">Complete a course to earn your first certificate!</p>
-      </div>
-    `;
+  if (!importTypeElement) {
+    console.error("No se encontró el elemento de selección de tipo de importación.");
+    showToast('error', 'Error', 'No se pudo determinar el tipo de importación.');
     return;
   }
-  grid.innerHTML = certificates.map(cert => createCertificateCard(cert)).join('');
+
+  const importType = importTypeElement.value;
+  let csvContent;
+  let fileName;
+
+  if (importType === 'students') {
+    csvContent = "nombre,email,curso\nJuan Pérez,juan.perez@example.com,Introducción a la Programación\nMaría Gómez,maria.gomez@example.com,Introducción a la Programación";
+    fileName = "template_users.csv";
+  } else {
+    csvContent = "nombre,email,curso,fecha\nJuan Pérez,juan.perez@example.com,Introducción a la Programación,2025-09-22\nMaría Gómez,maria.gomez@example.com,Introducción a la Programación,2025-09-22";
+    fileName = "template_certificates.csv";
+  }
+
+  // Crear un blob con el contenido CSV
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  // Crear un enlace para descargar el archivo
+  const link = document.createElement("a");
+  const url = URL.createObjectURL(blob);
+  link.setAttribute("href", url);
+  link.setAttribute("download", fileName);
+  link.style.visibility = 'hidden';
+  // Agregar el enlace al DOM y simular un clic para descargar
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 }
 
 // Función para migrar imágenes de blob a Base64

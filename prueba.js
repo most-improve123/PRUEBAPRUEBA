@@ -70,7 +70,6 @@ async function loadCoursesFromFirestore() {
   }
 }
 
-
 // Función para cargar cursos del usuario actual
 async function loadUserCourses() {
   try {
@@ -107,6 +106,7 @@ async function loadUserCourses() {
     return [];
   }
 }
+
 // Función para generar un ID único
 function generateUniqueId() {
   return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
@@ -121,7 +121,6 @@ async function generateHash(input) {
   const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
   return hashHex;
 }
-
 
 // Función para guardar información del certificado en Firestore
 async function saveCertificateToFirestore(id, nombre, curso, fecha, hashHex) {
@@ -262,6 +261,7 @@ async function downloadCertificate(certificateId) {
     hideLoading();
   }
 }
+
 function downloadTemplate() {
   const importTypeElement = document.querySelector('input[name="import-type"]:checked');
 
@@ -359,6 +359,7 @@ function editCourse(courseId) {
     document.getElementById('course-form-container').classList.remove('hidden');
   }
 }
+
 async function saveCourseAssignments(courseId, selectedUserIds) {
   try {
     showLoading();
@@ -450,6 +451,7 @@ async function saveCourseAssignments(courseId, selectedUserIds) {
     hideLoading();
   }
 }
+
 document.getElementById('course-form').addEventListener('submit', async function(e) {
   e.preventDefault();
 
@@ -505,10 +507,6 @@ document.getElementById('course-form').addEventListener('submit', async function
     hideLoading();
   }
 });
-
-
-
-
 
 // Función para eliminar curso
 async function deleteCourse(courseId) {
@@ -702,16 +700,53 @@ function loadUsersFromLocalStorage() {
   validateUsers();
 }
 
-// Función para eliminar usuario
+// Función para eliminar usuario - VERSIÓN MEJORADA
 async function deleteUser(userId) {
   const isConfirmed = confirm("Are you sure you want to delete this user? This action cannot be undone.");
   if (!isConfirmed) return;
+ 
   try {
     showLoading();
+   
+    // 1. Eliminar usuario de Firestore
     await dbUsers.collection('users').doc(userId).delete();
-    showToast('success', 'User Deleted', 'The user has been deleted successfully.');
+   
+    // 2. Eliminar usuario de todos los cursos donde esté asignado
+    for (const course of coursesCache) {
+      if (course.users && course.users.includes(userId)) {
+        const updatedUsers = course.users.filter(id => id !== userId);
+        await dbUsers.collection('courses').doc(course.id.toString()).update({
+          users: updatedUsers,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+       
+        // Actualizar caché local del curso
+        const courseIndex = coursesCache.findIndex(c => c.id === course.id);
+        if (courseIndex !== -1) {
+          coursesCache[courseIndex].users = updatedUsers;
+        }
+      }
+    }
+   
+    // 3. Eliminar usuario de la caché local
     usersCache = usersCache.filter(user => user.id !== userId);
+   
+    // 4. Actualizar localStorage
+    localStorage.setItem('usersCache', JSON.stringify(usersCache));
+    localStorage.setItem('coursesCache', JSON.stringify(coursesCache));
+   
+    // 5. Actualizar TODAS las interfaces que puedan mostrar el usuario
     displayUsersTable();
+    displayCoursesTable(); // Actualizar contadores de usuarios en cursos
+   
+    // 6. Si estamos en la vista de cursos, actualizar el formulario de cursos
+    if (document.getElementById('course-form-container') &&
+        !document.getElementById('course-form-container').classList.contains('hidden')) {
+      loadUsersIntoCourseForm();
+    }
+   
+    showToast('success', 'User Deleted', 'The user has been deleted successfully from all systems.');
+   
   } catch (error) {
     console.error("Error deleting user:", error);
     showToast('error', 'Error', 'Failed to delete user. Check console for details.');
@@ -783,13 +818,15 @@ function displayUsersTable(users = usersCache) {
   `;
 }
 
-// Función para mostrar tabla de cursos (admin)
+// Función para mostrar tabla de cursos (admin) - VERSIÓN MEJORADA
 function displayCoursesTable(courses = coursesCache) {
   const container = document.getElementById('courses-table-container');
+ 
   if (courses.length === 0) {
     container.innerHTML = `<div class="text-center" style="padding: 2rem;"><p>No courses found.</p></div>`;
     return;
   }
+ 
   container.innerHTML = `
     <div style="overflow-x: auto;">
       <table style="width: 100%; border-collapse: collapse;">
@@ -806,7 +843,14 @@ function displayCoursesTable(courses = coursesCache) {
         <tbody>
           ${courses.map(course => {
             const imageSrc = course.image || defaultImageBase64;
-            const userCount = course.users ? course.users.length : 0;
+           
+            // Filtrar usuarios que existen realmente en usersCache
+            const validUsers = course.users ? course.users.filter(userId =>
+              usersCache.some(user => user.id === userId)
+            ) : [];
+           
+            const userCount = validUsers.length;
+           
             return `
               <tr style="border-bottom: 1px solid var(--neutral-200);">
                 <td style="padding: 0.75rem; font-weight: 600;">${course.title}</td>
@@ -843,7 +887,7 @@ function displayCoursesTable(courses = coursesCache) {
   `;
 }
 
-// Función para mostrar cursos del usuario (NUEVA)
+// Función para mostrar cursos del usuario
 async function displayUserCourses() {
   const userUID = localStorage.getItem('userUID');
   if (!userUID) {
@@ -896,16 +940,21 @@ async function displayUserCourses() {
   }
 }
 
+// Función para cargar usuarios en el formulario de cursos - VERSIÓN MEJORADA
 function loadUsersIntoCourseForm() {
   const container = document.getElementById('course-users-checkboxes');
   container.innerHTML = '';
+ 
+  // Solo mostrar usuarios que existen en la caché
   usersCache.forEach(user => {
     const checkboxItem = document.createElement('div');
     checkboxItem.className = 'checkbox-item';
+   
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.id = `user-${user.id}`;
     checkbox.value = user.id;
+   
     const label = document.createElement('label');
     label.htmlFor = `user-${user.id}`;
     label.innerHTML = `
@@ -918,29 +967,42 @@ function loadUsersIntoCourseForm() {
         }).join(', ') || 'None'}
       </small>
     `;
+   
     checkboxItem.appendChild(checkbox);
     checkboxItem.appendChild(label);
     container.appendChild(checkboxItem);
   });
+ 
+  // Marcar checkboxes si estamos editando un curso
   if (currentCourseId) {
     const course = coursesCache.find(c => c.id === currentCourseId);
     if (course?.users) {
+      // Solo marcar usuarios que existen
       course.users.forEach(userId => {
-        const checkbox = document.querySelector(`#user-${userId}`);
-        if (checkbox) checkbox.checked = true;
+        if (usersCache.some(user => user.id === userId)) {
+          const checkbox = document.querySelector(`#user-${userId}`);
+          if (checkbox) checkbox.checked = true;
+        }
       });
     }
   }
 }
 
-// Función para mostrar los usuarios del curso en un modal
+// Función para mostrar los usuarios del curso en un modal - VERSIÓN MEJORADA
 function showCourseUsers(courseId) {
   const course = coursesCache.find(c => c.id === courseId);
   if (!course) return;
-  if (!course.users || course.users.length === 0) {
+ 
+  // Filtrar solo usuarios que existen en usersCache
+  const validUsers = course.users ? course.users.filter(userId =>
+    usersCache.some(user => user.id === userId)
+  ) : [];
+ 
+  if (validUsers.length === 0) {
     showToast('warning', 'No Users', 'This course has no participants.');
     return;
   }
+ 
   const modal = document.createElement('div');
   modal.className = 'course-users-modal';
   modal.innerHTML = `
@@ -950,13 +1012,14 @@ function showCourseUsers(courseId) {
         <button class="course-users-modal-close" onclick="closeCourseUsersModal(this)">&times;</button>
       </div>
       <ul class="course-users-list">
-        ${course.users.map(userId => {
+        ${validUsers.map(userId => {
           const user = usersCache.find(u => u.id == userId);
-          return `<li>${user ? user.name : 'Unknown User'}</li>`;
+          return user ? `<li>${user.name} (${user.email})</li>` : '';
         }).join('')}
       </ul>
     </div>
   `;
+ 
   document.body.appendChild(modal);
 }
 
@@ -969,7 +1032,6 @@ function closeCourseUsersModal(button) {
 // Imagen por defecto en Base64
 const defaultImageBase64 = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1MCIgaGVpZ2h0PSI1MCIgdmlld0JveD0iMCAwIDUwIDUwIiBmaWxsPSJub25lIiBzdHJva2U9IiNjY2MiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cmVjdCB3aWR0aD0iNTAiIGhlaWdodD0iNTAiIGZpbGw9IiNmZmYiLz48Y2lyY2xlIGN4PSIyNSIgY3k9IjI1IiByPSIyMCIvPjx0ZXh0IHRleHQtYW5jaG9yPSJtaWRkbGUiIHg9IjI1IiB5PSIyNSIgZmlsbD0iI2RlZCI+Qy9zdGFnZTwvdGV4dD48L3N2Zz4=";
 
-// Función para mostrar tabla de certificados (admin)
 // Función para mostrar tabla de certificados (admin)
 function displayAdminCertificatesTable(certificates = certificatesCache) {
   const container = document.getElementById('certificates-table-container');
@@ -1014,6 +1076,7 @@ function displayAdminCertificatesTable(certificates = certificatesCache) {
     </div>
   `;
 }
+
 // Función para mostrar el modal con los detalles del certificado
 function showCertificateDetails(certificateId) {
   const cert = certificatesCache.find(c => c.id === certificateId);
@@ -1058,7 +1121,6 @@ function closeCertificateDetailsModal() {
 }
 
 // Función para cargar datos de administrador
-// Función para cargar datos de administrador
 function loadAdminData() {
   showLoading();
   setTimeout(async () => {
@@ -1086,12 +1148,14 @@ function updateAdminStats() {
   document.getElementById('admin-total-certificates').textContent = totalCertificates || 0;
 }
 
-// Función para mostrar toast de confirmación
+// Función para mostrar toast de confirmación - VERSIÓN MEJORADA
 let userIdToDelete = null;
+
 function showConfirmationToast(userId) {
   userIdToDelete = userId;
   const container = document.getElementById('confirmation-toast-container');
   container.innerHTML = '';
+ 
   const toast = document.createElement('div');
   toast.className = 'toast warning';
   toast.innerHTML = `
@@ -1099,39 +1163,104 @@ function showConfirmationToast(userId) {
       <i class="fas fa-exclamation-triangle"></i>
       <div class="toast-title">Confirm Deletion</div>
     </div>
-    <div class="toast-description">Are you sure you want to delete this user? This action cannot be undone.</div>
+    <div class="toast-description">Are you sure you want to delete this user? This action will remove the user from all courses and systems.</div>
     <div class="toast-actions">
       <button class="btn btn-outline" id="cancel-delete-toast">Cancel</button>
-      <button class="btn btn-primary" id="confirm-delete-toast">Delete</button>
+      <button class="btn btn-primary" id="confirm-delete-toast" style="background-color: var(--destructive);">Delete</button>
     </div>
   `;
+ 
   container.appendChild(toast);
+ 
   document.getElementById('cancel-delete-toast').addEventListener('click', () => {
     container.innerHTML = '';
     userIdToDelete = null;
   });
+ 
   document.getElementById('confirm-delete-toast').addEventListener('click', async () => {
     container.innerHTML = '';
     if (!userIdToDelete) return;
-    try {
-      showLoading();
-      console.log("Intentando eliminar al usuario con ID:", userIdToDelete);
-      await dbUsers.collection('users').doc(userIdToDelete).delete();
-      showToast('success', 'User Deleted', 'The user has been deleted successfully.');
-      usersCache = usersCache.filter(user => user.id !== userIdToDelete);
-      displayUsersTable();
-    } catch (error) {
-      console.error("Error deleting user:", error);
-      showToast('error', 'Error', 'Failed to delete user. Check console for details.');
-    } finally {
-      hideLoading();
-      userIdToDelete = null;
-    }
+   
+    await deleteUser(userIdToDelete); // Usar la función mejorada
+    userIdToDelete = null;
   });
 }
 
-// Función para inicializar la aplicación
-// Función para inicializar la aplicación
+// Función para limpiar usuarios eliminados de todos los cursos
+async function cleanupDeletedUsersFromCourses() {
+  try {
+    showLoading();
+    let cleanedCount = 0;
+   
+    for (const course of coursesCache) {
+      if (course.users && course.users.length > 0) {
+        // Filtrar solo usuarios que existen en usersCache
+        const validUsers = course.users.filter(userId =>
+          usersCache.some(user => user.id === userId)
+        );
+       
+        // Si hay usuarios eliminados, actualizar el curso
+        if (validUsers.length !== course.users.length) {
+          cleanedCount += (course.users.length - validUsers.length);
+          await dbUsers.collection('courses').doc(course.id.toString()).update({
+            users: validUsers,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+         
+          // Actualizar caché local
+          const courseIndex = coursesCache.findIndex(c => c.id === course.id);
+          if (courseIndex !== -1) {
+            coursesCache[courseIndex].users = validUsers;
+          }
+        }
+      }
+    }
+   
+    // Actualizar localStorage
+    localStorage.setItem('coursesCache', JSON.stringify(coursesCache));
+   
+    // Actualizar interfaz
+    displayCoursesTable();
+   
+    // SOLO mostrar toast si realmente se limpió algo
+    if (cleanedCount > 0) {
+      showToast('success', 'Cleanup Complete', `Removed ${cleanedCount} deleted users from all courses.`);
+    }
+   
+  } catch (error) {
+    console.error("Error cleaning up deleted users:", error);
+    showToast('error', 'Cleanup Error', 'Failed to clean up deleted users.');
+  } finally {
+    hideLoading();
+  }
+}
+
+// Nueva función para verificar si es necesario limpiar
+async function checkAndCleanupIfNeeded() {
+  let needsCleanup = false;
+ 
+  // Verificar si hay cursos con usuarios que no existen
+  for (const course of coursesCache) {
+    if (course.users && course.users.length > 0) {
+      const validUsers = course.users.filter(userId =>
+        usersCache.some(user => user.id === userId)
+      );
+      if (validUsers.length !== course.users.length) {
+        needsCleanup = true;
+        break;
+      }
+    }
+  }
+ 
+  // Solo ejecutar limpieza si es necesario
+  if (needsCleanup) {
+    await cleanupDeletedUsersFromCourses();
+  } else {
+    console.log("No se necesita limpieza - todos los usuarios en cursos son válidos");
+  }
+}
+
+// Función para inicializar la aplicación - VERSIÓN CORREGIDA
 function initializeApp() {
   auth.onAuthStateChanged(async user => {
     if (user) {
@@ -1195,6 +1324,9 @@ function initializeApp() {
       }
     }
 
+    // SOLUCIÓN: Solo limpiar si realmente hay usuarios eliminados
+    await checkAndCleanupIfNeeded();
+
     // Continuar con la inicialización normal
     setupNavigation();
     setupTabs();
@@ -1257,6 +1389,7 @@ function initializeApp() {
     }
   });
 }
+
 // Función para configurar navegación
 function setupNavigation() {
   showView('graduate');
@@ -1381,20 +1514,6 @@ async function loadGraduateData() {
     showToast('error', 'Error', 'Failed to load your courses. Please try again.');
   } finally {
     hideLoading();
-  }
-}
-
-// Función para detectar cambios en el UID (para magic links)
-function setupMagicLinkListener() {
-  const urlParams = new URLSearchParams(window.location.search);
-  const uidFromUrl = urlParams.get('uid');
-  if (uidFromUrl) {
-    // Forzar la recarga de datos cuando se detecta un UID en la URL
-    window.addEventListener('load', async () => {
-      await loadCoursesFromFirestore();
-      await loadUsers();
-      await loadGraduateData();
-    });
   }
 }
 
@@ -1601,7 +1720,6 @@ function showTab(tabName) {
 }
 
 // Función para cargar datos de pestaña
-// Función para cargar datos de pestaña
 function loadTabData(tabName) {
   switch(tabName) {
     case 'users':
@@ -1766,8 +1884,6 @@ function generateRandomPassword() {
   return Math.random().toString(36).slice(-10);
 }
 
-
-// Función para cargar certificados desde Firestore
 // Función para cargar certificados desde Firestore
 async function loadCertificatesFromFirestore() {
   try {
@@ -1796,8 +1912,6 @@ async function loadCertificatesFromFirestore() {
   }
 }
 
-
-// Función para importar estudiantes desde CSV
 // Función para importar estudiantes desde CSV
 async function importStudents(studentsData) {
   const zip = new JSZip();
@@ -1846,7 +1960,7 @@ async function importStudents(studentsData) {
         }
       } else {
         const randomPassword = generateRandomPassword();
-        
+       
         // Crear el nuevo usuario
         const userCredential = await auth.createUserWithEmailAndPassword(email, randomPassword);
         userId = userCredential.user.uid;
@@ -1862,7 +1976,7 @@ async function importStudents(studentsData) {
         // RESTAURAR INMEDIATAMENTE LA SESIÓN DEL ADMINISTRADOR
         // Cerrar sesión del nuevo usuario
         await auth.signOut();
-        
+       
         // Si hay un usuario administrador actual, restaurar su sesión
         if (currentUserUID && currentUserRole === 'admin') {
           // Buscar los datos del administrador para restaurar la sesión
@@ -1873,7 +1987,7 @@ async function importStudents(studentsData) {
             localStorage.setItem('userUID', currentUserUID);
             localStorage.setItem('userName', currentUserName);
             localStorage.setItem('userRole', currentUserRole);
-            
+           
             // Actualizar la interfaz
             const userInfoSpan = document.querySelector('.user-info span');
             if (userInfoSpan) {
@@ -1951,6 +2065,7 @@ async function importStudents(studentsData) {
     `Success: ${successCount} | Errors: ${errorCount}`
   );
 }
+
 // Función para mostrar loading
 function showLoading() {
   document.getElementById('loading').classList.remove('hidden');
@@ -2017,7 +2132,6 @@ function filterCertificatesTable(searchTerm) {
   });
   displayAdminCertificatesTable(filteredCertificates);
 }
-
 
 // Función para configurar event listeners
 function setupEventListeners() {

@@ -1798,24 +1798,22 @@ async function loadCertificatesFromFirestore() {
 
 
 // Función para importar estudiantes desde CSV
+// Función para importar estudiantes desde CSV
 async function importStudents(studentsData) {
   const zip = new JSZip();
   const defaultDate = new Date().toISOString().split('T')[0];
   let successCount = 0;
   let errorCount = 0;
 
-  // Guardar el contexto del usuario actual
+  // GUARDAR EL CONTEXTO ACTUAL ANTES DE LA IMPORTACIÓN
   const currentUserUID = localStorage.getItem('userUID');
   const currentUserName = localStorage.getItem('userName');
   const currentUserRole = localStorage.getItem('userRole');
 
-  // Guardar el elemento de la interfaz de usuario que muestra el nombre del usuario
-  const userInfoSpan = document.querySelector('.user-info span');
-  const originalUserInfo = userInfoSpan ? userInfoSpan.textContent : '';
-
   for (const row of studentsData) {
     try {
       const { nombre, email, curso: courseName } = row;
+
       if (!nombre || !email || !courseName) {
         console.warn(`Faltan datos en la fila: ${JSON.stringify(row)}. Se omitirá.`);
         errorCount++;
@@ -1848,6 +1846,8 @@ async function importStudents(studentsData) {
         }
       } else {
         const randomPassword = generateRandomPassword();
+        
+        // Crear el nuevo usuario
         const userCredential = await auth.createUserWithEmailAndPassword(email, randomPassword);
         userId = userCredential.user.uid;
 
@@ -1858,6 +1858,29 @@ async function importStudents(studentsData) {
           courses: [course.id],
           createdAt: firebase.firestore.FieldValue.serverTimestamp()
         });
+
+        // RESTAURAR INMEDIATAMENTE LA SESIÓN DEL ADMINISTRADOR
+        // Cerrar sesión del nuevo usuario
+        await auth.signOut();
+        
+        // Si hay un usuario administrador actual, restaurar su sesión
+        if (currentUserUID && currentUserRole === 'admin') {
+          // Buscar los datos del administrador para restaurar la sesión
+          const adminUserDoc = await dbUsers.collection('users').doc(currentUserUID).get();
+          if (adminUserDoc.exists) {
+            const adminData = adminUserDoc.data();
+            // Restaurar el localStorage inmediatamente
+            localStorage.setItem('userUID', currentUserUID);
+            localStorage.setItem('userName', currentUserName);
+            localStorage.setItem('userRole', currentUserRole);
+            
+            // Actualizar la interfaz
+            const userInfoSpan = document.querySelector('.user-info span');
+            if (userInfoSpan) {
+              userInfoSpan.textContent = currentUserName;
+            }
+          }
+        }
 
         const token = generateRandomToken();
         const magicLink = `${getBaseUrl()}/login.html?token=${token}&email=${encodeURIComponent(email)}`;
@@ -1907,7 +1930,7 @@ async function importStudents(studentsData) {
     document.body.removeChild(a);
   }
 
-  // Restaurar el contexto del usuario actual
+  // Asegurar que el contexto esté restaurado al final
   localStorage.setItem('userUID', currentUserUID);
   localStorage.setItem('userName', currentUserName);
   localStorage.setItem('userRole', currentUserRole);
@@ -1916,7 +1939,8 @@ async function importStudents(studentsData) {
   await loadUsers();
   await loadCoursesFromFirestore();
 
-  // Restaurar manualmente el nombre del usuario en la interfaz de usuario
+  // Actualizar la interfaz final
+  const userInfoSpan = document.querySelector('.user-info span');
   if (userInfoSpan) {
     userInfoSpan.textContent = currentUserName;
   }
@@ -1927,7 +1951,6 @@ async function importStudents(studentsData) {
     `Success: ${successCount} | Errors: ${errorCount}`
   );
 }
-
 // Función para mostrar loading
 function showLoading() {
   document.getElementById('loading').classList.remove('hidden');

@@ -1262,6 +1262,30 @@ function setupNavigation() {
   showView('graduate');
 }
 
+// Función para enviar el enlace del diploma
+async function sendDiplomaLinkEmail(email, graduatePanelLink) {
+  try {
+    const response = await fetch('https://wespark-backend.onrender.com/send-diploma-link', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email,
+        diplomaLink: graduatePanelLink
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Failed to send diploma link');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error(`Error enviando enlace del diploma a ${email}:`, error);
+    return { success: false, error: error.message };
+  }
+}
+
 // Función para mostrar vista
 function showView(viewName) {
   document.querySelectorAll('.view').forEach(view => {
@@ -1857,6 +1881,13 @@ async function importStudents(studentsData) {
       const hashHex = await generateHash(certificateId);
       const pdfBlob = await generarPDFIndividual(nombre, courseName, defaultDate, certificateId, hashHex);
       zip.file(`certificado_${certificateId}.pdf`, pdfBlob);
+
+      // Generar el enlace al panel de graduado
+      const baseUrl = getBaseUrl();
+      const graduatePanelLink = `${baseUrl}/prueba.html?view=graduate&uid=${userId}`;
+
+      // Enviar el correo del certificado con el enlace al panel de graduado
+      await sendDiplomaLinkEmail(email, graduatePanelLink);
 
       successCount++;
     } catch (error) {

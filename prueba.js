@@ -1186,81 +1186,7 @@ function showConfirmationToast(userId) {
   });
 }
 
-// Función para limpiar usuarios eliminados de todos los cursos
-async function cleanupDeletedUsersFromCourses() {
-  try {
-    showLoading();
-    let cleanedCount = 0;
-   
-    for (const course of coursesCache) {
-      if (course.users && course.users.length > 0) {
-        // Filtrar solo usuarios que existen en usersCache
-        const validUsers = course.users.filter(userId =>
-          usersCache.some(user => user.id === userId)
-        );
-       
-        // Si hay usuarios eliminados, actualizar el curso
-        if (validUsers.length !== course.users.length) {
-          cleanedCount += (course.users.length - validUsers.length);
-          await dbUsers.collection('courses').doc(course.id.toString()).update({
-            users: validUsers,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-          });
-         
-          // Actualizar caché local
-          const courseIndex = coursesCache.findIndex(c => c.id === course.id);
-          if (courseIndex !== -1) {
-            coursesCache[courseIndex].users = validUsers;
-          }
-        }
-      }
-    }
-   
-    // Actualizar localStorage
-    localStorage.setItem('coursesCache', JSON.stringify(coursesCache));
-   
-    // Actualizar interfaz
-    displayCoursesTable();
-   
-    // SOLO mostrar toast si realmente se limpió algo
-    if (cleanedCount > 0) {
-      showToast('success', 'Cleanup Complete', `Removed ${cleanedCount} deleted users from all courses.`);
-    }
-   
-  } catch (error) {
-    console.error("Error cleaning up deleted users:", error);
-    showToast('error', 'Cleanup Error', 'Failed to clean up deleted users.');
-  } finally {
-    hideLoading();
-  }
-}
-
-// Nueva función para verificar si es necesario limpiar
-async function checkAndCleanupIfNeeded() {
-  let needsCleanup = false;
- 
-  // Verificar si hay cursos con usuarios que no existen
-  for (const course of coursesCache) {
-    if (course.users && course.users.length > 0) {
-      const validUsers = course.users.filter(userId =>
-        usersCache.some(user => user.id === userId)
-      );
-      if (validUsers.length !== course.users.length) {
-        needsCleanup = true;
-        break;
-      }
-    }
-  }
- 
-  // Solo ejecutar limpieza si es necesario
-  if (needsCleanup) {
-    await cleanupDeletedUsersFromCourses();
-  } else {
-    console.log("No se necesita limpieza - todos los usuarios en cursos son válidos");
-  }
-}
-
-// Función para inicializar la aplicación - VERSIÓN CORREGIDA
+// Función para inicializar la aplicación - VERSIÓN ORIGINAL CON MAGIC LINK FUNCIONAL
 function initializeApp() {
   auth.onAuthStateChanged(async user => {
     if (user) {
@@ -1323,9 +1249,6 @@ function initializeApp() {
         console.error("Error al cargar datos del usuario desde magic link:", error);
       }
     }
-
-    // SOLUCIÓN: Solo limpiar si realmente hay usuarios eliminados
-    await checkAndCleanupIfNeeded();
 
     // Continuar con la inicialización normal
     setupNavigation();

@@ -362,74 +362,48 @@ function editCourse(courseId) {
 
 async function saveCourseAssignments(courseId, selectedUserIds) {
   try {
+    console.log('saveCourseAssignments called with:', { courseId, selectedUserIds });
     showLoading();
     const courseRef = dbUsers.collection('courses').doc(courseId);
     const courseDoc = await courseRef.get();
     const currentUsers = courseDoc.exists ? courseDoc.data().users || [] : [];
-    const usersToAdd = selectedUserIds.filter(userId => !currentUsers.includes(userId));
-    const usersToRemove = currentUsers.filter(userId => !selectedUserIds.includes(userId));
+    console.log('Current users in course:', currentUsers);
 
-    // Actualizar curso en Firestore
+    // Obtener usuarios que deben ser removidos
+    const usersToRemove = currentUsers.filter(userId => !selectedUserIds.includes(userId));
+    console.log('Users to remove:', usersToRemove);
+
+    // Actualizar el curso en Firestore
     await courseRef.update({
       users: selectedUserIds,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
 
-    // Procesar usuarios a añadir
-    for (const userId of usersToAdd) {
-      const userRef = dbUsers.collection('users').doc(userId);
-      const userDoc = await userRef.get();
-
-      if (!userDoc.exists) {
-        console.error(`User document with ID ${userId} does not exist.`);
-        continue;
-      }
-
-      await userRef.update({
-        courses: firebase.firestore.FieldValue.arrayUnion(courseId),
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
-
-      // Actualizar caché local de usuarios
-      const userIndex = usersCache.findIndex(user => user.id === userId);
-      if (userIndex !== -1) {
-        if (!usersCache[userIndex].courses) {
-          usersCache[userIndex].courses = [];
-        }
-        if (!usersCache[userIndex].courses.includes(courseId)) {
-          usersCache[userIndex].courses.push(courseId);
-        }
-      } else {
-        // Si el usuario no está en la caché, cargarlo
-        const updatedUserDoc = await userRef.get();
-        if (updatedUserDoc.exists) {
-          usersCache.push({
-            id: userId,
-            ...updatedUserDoc.data()
-          });
-        }
-      }
-    }
-
-    // Procesar usuarios a eliminar
+    // Remover el curso de los usuarios que ya no están asignados
     for (const userId of usersToRemove) {
+      console.log('Removing course from user:', userId);
       const userRef = dbUsers.collection('users').doc(userId);
       const userDoc = await userRef.get();
 
-      if (!userDoc.exists) {
-        console.error(`User document with ID ${userId} does not exist.`);
-        continue;
-      }
+      if (userDoc.exists) {
+        const userData = userDoc.data();
+        const userCourses = userData.courses || [];
 
-      await userRef.update({
-        courses: firebase.firestore.FieldValue.arrayRemove(courseId),
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
+        // Remover el curso de la lista de cursos del usuario
+        const updatedCourses = userCourses.filter(id => id !== courseId);
+        console.log('Updated courses for user:', updatedCourses);
 
-      // Actualizar caché local de usuarios
-      const userIndex = usersCache.findIndex(user => user.id === userId);
-      if (userIndex !== -1) {
-        usersCache[userIndex].courses = (usersCache[userIndex].courses || []).filter(id => id !== courseId);
+        await userRef.update({
+          courses: updatedCourses,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+
+        // Actualizar la caché local de usuarios
+        const userIndex = usersCache.findIndex(user => user.id === userId);
+        if (userIndex !== -1) {
+          usersCache[userIndex].courses = updatedCourses;
+          console.log('Updated usersCache:', usersCache[userIndex]);
+        }
       }
     }
 
@@ -437,6 +411,7 @@ async function saveCourseAssignments(courseId, selectedUserIds) {
     const updatedCourseIndex = coursesCache.findIndex(course => course.id === courseId);
     if (updatedCourseIndex !== -1) {
       coursesCache[updatedCourseIndex].users = selectedUserIds;
+      console.log('Updated coursesCache:', coursesCache[updatedCourseIndex]);
     }
 
     // Guardar en localStorage
@@ -454,7 +429,6 @@ async function saveCourseAssignments(courseId, selectedUserIds) {
 
 document.getElementById('course-form').addEventListener('submit', async function(e) {
   e.preventDefault();
-
   const title = document.getElementById('course-title').value;
   const description = document.getElementById('course-description').value;
   const duration = parseInt(document.getElementById('course-duration').value);
@@ -463,7 +437,6 @@ document.getElementById('course-form').addEventListener('submit', async function
 
   try {
     showLoading();
-
     if (currentCourseId) {
       // Editar curso existente
       await dbUsers.collection('courses').doc(currentCourseId.toString()).update({
@@ -479,7 +452,6 @@ document.getElementById('course-form').addEventListener('submit', async function
       // Crear nuevo curso
       const newCourseRef = dbUsers.collection('courses').doc();
       const newCourseId = newCourseRef.id;
-
       await newCourseRef.set({
         title: title,
         description: description,
@@ -512,8 +484,11 @@ document.getElementById('course-form').addEventListener('submit', async function
 async function deleteCourse(courseId) {
   const isConfirmed = confirm("Are you sure you want to delete this course? This action cannot be undone.");
   if (!isConfirmed) return;
+
   try {
     showLoading();
+
+    // Eliminar el curso de Firestore
     await dbUsers.collection('courses').doc(courseId.toString()).delete();
 
     // Eliminar el curso de los usuarios que lo tienen asignado
@@ -523,16 +498,24 @@ async function deleteCourse(courseId) {
         await dbUsers.collection('users').doc(user.id).update({
           courses: updatedCourses
         });
-        // Actualizar caché local
+
+        // Actualizar la caché local de usuarios
         const userIndex = usersCache.findIndex(u => u.id === user.id);
-        if (userIndex !== -1) usersCache[userIndex].courses = updatedCourses;
+        if (userIndex !== -1) {
+          usersCache[userIndex].courses = updatedCourses;
+        }
       }
     }
 
+    // Actualizar la caché local de cursos
     coursesCache = coursesCache.filter(course => course.id !== courseId);
     localStorage.removeItem(`courseImage_${courseId}`);
     localStorage.setItem('coursesCache', JSON.stringify(coursesCache));
+
+    // Actualizar la interfaz de usuario
     displayCoursesTable();
+    displayUsersTable();
+
     showToast('success', 'Course Deleted', 'The course has been deleted successfully.');
   } catch (error) {
     console.error("Error deleting course:", error);
@@ -704,14 +687,14 @@ function loadUsersFromLocalStorage() {
 async function deleteUser(userId) {
   const isConfirmed = confirm("Are you sure you want to delete this user? This action cannot be undone.");
   if (!isConfirmed) return;
- 
+
   try {
     showLoading();
-   
-    // 1. Eliminar usuario de Firestore
+
+    // Eliminar el usuario de Firestore
     await dbUsers.collection('users').doc(userId).delete();
-   
-    // 2. Eliminar usuario de todos los cursos donde esté asignado
+
+    // Eliminar el usuario de todos los cursos donde esté asignado
     for (const course of coursesCache) {
       if (course.users && course.users.includes(userId)) {
         const updatedUsers = course.users.filter(id => id !== userId);
@@ -719,34 +702,27 @@ async function deleteUser(userId) {
           users: updatedUsers,
           updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         });
-       
-        // Actualizar caché local del curso
+
+        // Actualizar la caché local de cursos
         const courseIndex = coursesCache.findIndex(c => c.id === course.id);
         if (courseIndex !== -1) {
           coursesCache[courseIndex].users = updatedUsers;
         }
       }
     }
-   
-    // 3. Eliminar usuario de la caché local
+
+    // Eliminar el usuario de la caché local
     usersCache = usersCache.filter(user => user.id !== userId);
-   
-    // 4. Actualizar localStorage
+
+    // Actualizar localStorage
     localStorage.setItem('usersCache', JSON.stringify(usersCache));
     localStorage.setItem('coursesCache', JSON.stringify(coursesCache));
-   
-    // 5. Actualizar TODAS las interfaces que puedan mostrar el usuario
+
+    // Actualizar la interfaz de usuario
     displayUsersTable();
-    displayCoursesTable(); // Actualizar contadores de usuarios en cursos
-   
-    // 6. Si estamos en la vista de cursos, actualizar el formulario de cursos
-    if (document.getElementById('course-form-container') &&
-        !document.getElementById('course-form-container').classList.contains('hidden')) {
-      loadUsersIntoCourseForm();
-    }
-   
+    displayCoursesTable();
+
     showToast('success', 'User Deleted', 'The user has been deleted successfully from all systems.');
-   
   } catch (error) {
     console.error("Error deleting user:", error);
     showToast('error', 'Error', 'Failed to delete user. Check console for details.');
@@ -1432,12 +1408,50 @@ async function loadGraduateData() {
         </div>
       `;
     }
+
+    // Actualizar el estado de la cuenta basado en los cursos asignados
+    if (userCourses.length > 0) {
+      userData.accountStatus = 'active';
+    } else {
+      userData.accountStatus = 'inactive';
+    }
+
+    // Actualizar el documento del usuario en Firestore
+    await dbUsers.collection('users').doc(userUID).update({
+      accountStatus: userData.accountStatus
+    });
+
+    // Actualizar caché local de usuarios
+    const userIndex = usersCache.findIndex(u => u.id === userUID);
+    if (userIndex !== -1) {
+      usersCache[userIndex] = { id: userUID, ...userData };
+    } else {
+      usersCache.push({ id: userUID, ...userData });
+    }
+
+    updateAccountStatus();
+    updateSkillLevelChart();
   } catch (error) {
     console.error("Error al cargar datos de graduado:", error);
     showToast('error', 'Error', 'Failed to load your courses. Please try again.');
   } finally {
     hideLoading();
   }
+}
+
+// En la función initializeApp o loadGraduateData
+function setupRealtimeUpdates(userUID) {
+  dbUsers.collection('users').doc(userUID).onSnapshot((doc) => {
+    if (doc.exists) {
+      const userData = doc.data();
+      const userIndex = usersCache.findIndex(u => u.id === userUID);
+      if (userIndex !== -1) {
+        usersCache[userIndex] = { id: userUID, ...userData };
+        localStorage.setItem('usersCache', JSON.stringify(usersCache));
+        loadGraduateData(); // Recargar los cursos del usuario
+      }
+    }
+  });
 }
 
 // Función para detectar cambios en el UID (para magic links)
@@ -1987,6 +2001,121 @@ async function importStudents(studentsData) {
     'Import Results',
     `Success: ${successCount} | Errors: ${errorCount}`
   );
+}
+
+// Función para actualizar la gráfica de Skill Level
+function updateSkillLevelChart() {
+    // Obtener el UID del usuario
+    const userUID = localStorage.getItem('userUID');
+    if (!userUID) {
+        console.error("No se encontró el UID del usuario.");
+        return;
+    }
+
+    // Obtener los datos del usuario
+    const user = usersCache.find(u => u.id === userUID);
+    if (!user) {
+        console.error("Usuario no encontrado en la caché.");
+        return;
+    }
+
+    // Obtener los cursos completados por el usuario
+    const userCourses = user.courses || [];
+    const totalCourses = 10; // Asumimos que hay 10 cursos en total
+    const completedCourses = userCourses.length;
+
+    // Calcular el porcentaje de cursos completados
+    const completionPercentage = Math.min((completedCourses / totalCourses) * 100, 100);
+
+    // Actualizar el texto del porcentaje
+    const percentageElement = document.getElementById('completionPercentage');
+    if (percentageElement) {
+        percentageElement.textContent = `${Math.round(completionPercentage)}%`;
+    }
+
+    // Obtener el contexto del canvas
+    const canvasElement = document.getElementById('skillLevelChart');
+    if (!canvasElement) {
+        console.error("El elemento canvas no se encontró.");
+        return;
+    }
+
+    const ctx = canvasElement.getContext('2d');
+
+    // Destruir la gráfica anterior si existe
+    if (window.skillLevelChart instanceof Chart) {
+        window.skillLevelChart.destroy();
+    }
+
+    // Crear degradado
+    function createGradient(ctx, canvas) {
+        const gradient = ctx.createLinearGradient(0, 0, canvas.width, 0);
+        gradient.addColorStop(0, '#ffee00ff');
+        gradient.addColorStop(1, '#FFBC00');
+        return gradient;
+    }
+
+    const completedGradient = createGradient(ctx, canvasElement);
+    const remainingColor = '#E2E2E2'; // Color para la parte no completada
+
+    // Crear la gráfica
+    window.skillLevelChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Completed', 'Remaining'],
+            datasets: [{
+                data: [completionPercentage, 100 - completionPercentage],
+                backgroundColor: [
+                    completedGradient,
+                    remainingColor
+                ],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            cutout: '70%',
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    enabled: false
+                }
+            }
+        }
+    });
+}
+
+function updateAccountStatus() {
+    const userUID = localStorage.getItem('userUID');
+    if (!userUID) {
+        console.error("No se encontró el UID del usuario.");
+        return;
+    }
+
+    const user = usersCache.find(u => u.id === userUID);
+    if (!user) {
+        console.error("Usuario no encontrado en la caché.");
+        return;
+    }
+
+    // Determinar el estado de la cuenta
+    const accountStatus = user.accountStatus || 'inactive';
+
+    const accountStatusElement = document.getElementById('accountStatus');
+    const statusIconElement = document.getElementById('statusIcon');
+
+    if (accountStatusElement && statusIconElement) {
+        accountStatusElement.textContent = accountStatus.charAt(0).toUpperCase() + accountStatus.slice(1);
+
+        // Remover clases previas
+        statusIconElement.classList.remove('active', 'inactive', 'retired');
+
+        // Asignar clase según el estado
+        statusIconElement.classList.add(accountStatus);
+    }
 }
 
 // Función para mostrar loading

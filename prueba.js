@@ -770,12 +770,20 @@ function displayUsersTable(users = usersCache) {
                   ${user.role || 'Undefined'}
                 </span>
               </td>
-              <td style="padding: 0.75rem;">
+              <td class="user-courses-cell">
                 ${user.courses && user.courses.length > 0 ?
-                  user.courses.map(courseId => {
-                    const course = coursesCache.find(c => c.id === courseId);
-                    return course ? course.title : 'Unknown';
-                  }).join(', ') : 'None'}
+                  `<div class="user-courses-container">
+                    ${user.courses.map(courseId => {
+                      const course = coursesCache.find(c => c.id === courseId);
+                      return course ?
+                        `<div class="user-course-item">
+                          <span class="user-course-name">${course.title}</span>
+                          <button class="user-course-remove-btn" onclick="showConfirmationToast('${user.id}', '${courseId}')">
+                            <i class="fas fa-trash"></i>
+                          </button>
+                        </div>` : '';
+                    }).join('')}
+                  </div>` : 'None'}
               </td>
               <td style="padding: 0.75rem;">${user.createdAt ? new Date(user.createdAt.seconds * 1000).toLocaleDateString() : 'Undefined'}</td>
               <td style="padding: 0.75rem;">
@@ -792,6 +800,44 @@ function displayUsersTable(users = usersCache) {
       </table>
     </div>
   `;
+}
+async function removeCourseFromUser(userId, courseId) {
+  try {
+    showLoading();
+    // 1. Eliminar el curso del array de cursos del usuario en Firestore
+    const userRef = dbUsers.collection('users').doc(userId);
+    await userRef.update({
+      courses: firebase.firestore.FieldValue.arrayRemove(courseId),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    // 2. Eliminar el usuario del array de usuarios del curso en Firestore
+    const courseRef = dbUsers.collection('courses').doc(courseId);
+    await courseRef.update({
+      users: firebase.firestore.FieldValue.arrayRemove(userId),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    // 3. Actualizar la caché local de usuarios
+    const userIndex = usersCache.findIndex(u => u.id === userId);
+    if (userIndex !== -1) {
+      usersCache[userIndex].courses = (usersCache[userIndex].courses || []).filter(id => id !== courseId);
+    }
+    // 4. Actualizar la caché local de cursos
+    const courseIndex = coursesCache.findIndex(c => c.id === courseId);
+    if (courseIndex !== -1) {
+      coursesCache[courseIndex].users = (coursesCache[courseIndex].users || []).filter(id => id !== userId);
+    }
+    // 5. Guardar en localStorage
+    localStorage.setItem('usersCache', JSON.stringify(usersCache));
+    localStorage.setItem('coursesCache', JSON.stringify(coursesCache));
+    // 6. Actualizar la tabla de usuarios
+    displayUsersTable();
+    showToast('success', 'Course Removed', 'The course has been removed from the user.');
+  } catch (error) {
+    console.error("Error removing course from user:", error);
+    showToast('error', 'Error', 'Failed to remove course from user. Check console for details.');
+  } finally {
+    hideLoading();
+  }
 }
 
 // Función para mostrar tabla de cursos (admin) - VERSIÓN MEJORADA
@@ -1126,42 +1172,44 @@ function updateAdminStats() {
 
 // Función para mostrar toast de confirmación - VERSIÓN MEJORADA
 let userIdToDelete = null;
-
-function showConfirmationToast(userId) {
-  userIdToDelete = userId;
+let userIdToModify = null;
+let courseIdToRemove = null;
+function showConfirmationToast(userId, courseId) {
+  userIdToModify = userId;
+  courseIdToRemove = courseId;
   const container = document.getElementById('confirmation-toast-container');
   container.innerHTML = '';
- 
+
   const toast = document.createElement('div');
   toast.className = 'toast warning';
   toast.innerHTML = `
     <div class="toast-header">
       <i class="fas fa-exclamation-triangle"></i>
-      <div class="toast-title">Confirm Deletion</div>
+      <div class="toast-title">Confirm Removal</div>
     </div>
-    <div class="toast-description">Are you sure you want to delete this user? This action will remove the user from all courses and systems.</div>
+    <div class="toast-description">Are you sure you want to remove this course from the user?</div>
     <div class="toast-actions">
-      <button class="btn btn-outline" id="cancel-delete-toast">Cancel</button>
-      <button class="btn btn-primary" id="confirm-delete-toast" style="background-color: var(--destructive);">Delete</button>
+      <button class="btn btn-outline" id="cancel-remove-toast">Cancel</button>
+      <button class="btn btn-primary" id="confirm-remove-toast" style="background-color: var(--destructive);">Remove</button>
     </div>
   `;
- 
+
   container.appendChild(toast);
- 
-  document.getElementById('cancel-delete-toast').addEventListener('click', () => {
+
+  document.getElementById('cancel-remove-toast').addEventListener('click', () => {
     container.innerHTML = '';
-    userIdToDelete = null;
+    userIdToModify = null;
+    courseIdToRemove = null;
   });
- 
-  document.getElementById('confirm-delete-toast').addEventListener('click', async () => {
+
+  document.getElementById('confirm-remove-toast').addEventListener('click', async () => {
     container.innerHTML = '';
-    if (!userIdToDelete) return;
-   
-    await deleteUser(userIdToDelete); // Usar la función mejorada
-    userIdToDelete = null;
+    if (!userIdToModify || !courseIdToRemove) return;
+    await removeCourseFromUser(userIdToModify, courseIdToRemove);
+    userIdToModify = null;
+    courseIdToRemove = null;
   });
 }
-
 // Función para inicializar la aplicación - VERSIÓN ORIGINAL CON MAGIC LINK FUNCIONAL
 function initializeApp() {
   auth.onAuthStateChanged(async user => {

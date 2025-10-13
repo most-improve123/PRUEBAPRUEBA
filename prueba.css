@@ -260,12 +260,79 @@ body {
     font-size: 2rem;
 }
 
+
 #statusIcon.active {
     color: var(--secondary-green);
 }
 
 #statusIcon.inactive {
     color: var(--neutral-400);
+}
+/* Estilo para la celda de cursos en la tabla de usuarios */
+td.user-courses-cell {
+  width: 300px;
+  min-width: 300px;
+  padding: 0.75rem;
+  vertical-align: top;
+}
+
+/* Contenedor de los cursos de un usuario */
+.user-courses-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+/* Cada curso individual */
+.user-course-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem;
+  background-color: var(--neutral-100);
+  border-radius: 0.375rem;
+  border: 1px solid var(--neutral-200);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Nombre del curso */
+.user-course-name {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--neutral-800);
+  flex: 1;
+  margin-right: 0.5rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Botón de eliminar curso */
+.user-course-remove-btn {
+  padding: 0.25rem 0.5rem;
+  margin-left: 0.5rem;
+  color: var(--destructive);
+  border: 1px solid var(--destructive);
+  background: white;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+/* Icono de eliminar */
+.user-course-remove-btn i {
+  font-size: 0.75rem;
+  color: var(--destructive);
+}
+
+/* Hover para el botón de eliminar */
+.user-course-remove-btn:hover {
+  background-color: var(--neutral-200);
 }
 
 #statusIcon.retired {
